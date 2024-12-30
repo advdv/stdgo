@@ -1,0 +1,15 @@
+{
+  "components": {
+    "examples": {
+      "exampleImage1": {
+        "value": {
+          "foo": "bar"
+        }
+      }
+    },
+    "schemas": {}
+  },
+  "info": { "title": "Event", "version": "1.0.0" },
+  "openapi": "3.0.0",
+  "paths": {}
+}
