@@ -1,4 +1,4 @@
-package stdfxlambda
+package stdlambda
 
 import (
 	"context"

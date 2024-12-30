@@ -1,5 +1,5 @@
-// Package stdfxlambda allows a lambda to be implemented via a Uber's fx dependency.
-package stdfxlambda
+// Package stdlambda allows a lambda to be implemented via a Uber's fx dependency.
+package stdlambda
 
 import (
 	"context"
