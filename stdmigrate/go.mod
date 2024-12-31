@@ -1,4 +1,4 @@
-module github.com/advdv/stdgo/stdgoose
+module github.com/advdv/stdgo/stdmigrate
 
 go 1.23.4
 

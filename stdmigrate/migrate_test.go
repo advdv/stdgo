@@ -6,7 +6,7 @@ import (
 	"embed"
 	"testing"
 
-	stdmigrate "github.com/advdv/stdgo/stdgoose"
+	stdmigrate "github.com/advdv/stdgo/stdmigrate"
 	"github.com/stretchr/testify/require"
 )
 
