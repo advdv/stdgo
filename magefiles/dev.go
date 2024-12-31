@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -39,20 +40,34 @@ func (Dev) Test(ctx context.Context) error {
 }
 
 // Release tags a new version and pushes it.
-func (Dev) Release(version string) error {
-	if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match([]byte(version)) {
-		return errors.New("version must be in format vX,Y,Z")
-	}
+func (Dev) Release() error {
+	return forEachPackageDir(func(e os.DirEntry) error {
+		filename := filepath.Join(e.Name(), "version.txt")
+		version, err := os.ReadFile(filename)
+		if os.IsNotExist(err) {
+			return nil // skip
+		} else if err != nil {
+			return fmt.Errorf("failed to read version file: %w", err)
+		}
 
-	if err := sh.Run("git", "tag", version); err != nil {
-		return fmt.Errorf("failed to tag version: %w", err)
-	}
+		if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match(version) {
+			return errors.New("version must be in format vX,Y,Z")
+		}
 
-	if err := sh.Run("git", "push", "origin", version); err != nil {
-		return fmt.Errorf("failed to push version tag: %w", err)
-	}
+		tagName := fmt.Sprintf("%s/%s", e.Name(), string(version))
 
-	return nil
+		stderr := bytes.NewBuffer(nil)
+		_, err = sh.Exec(nil, nil, stderr, "git", "tag", tagName)
+		if err != nil && !strings.Contains(stderr.String(), "already exists") {
+			return fmt.Errorf("failed to tag: %w", err)
+		}
+
+		if err := sh.Run("git", "push", "origin", tagName); err != nil {
+			return fmt.Errorf("failed to push version tag: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func runForEachPackage(ctx context.Context, cmd string, args ...string) error {
