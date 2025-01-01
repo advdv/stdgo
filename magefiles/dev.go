@@ -38,6 +38,8 @@ func (Dev) Lint(ctx context.Context) error {
 
 // Test the whole codebase.
 func (Dev) Test(ctx context.Context) error {
+	mg.Deps((Dev{}).Serve)
+
 	return runForEachPackage(ctx, "go", "test", "./...")
 }
 
@@ -70,6 +72,19 @@ func (Dev) Release(ctx context.Context) error {
 
 		return nil
 	})
+}
+
+// Serve serves out-of-process dependencies for testing.
+func (Dev) Serve() error {
+	if err := sh.RunWith(map[string]string{}, "docker", "compose",
+		"-f", "docker-compose.yml",
+		"up",
+		"-d", "--build", "--remove-orphans", "--force-recreate",
+	); err != nil {
+		return fmt.Errorf("failed to run: %w", err)
+	}
+
+	return nil
 }
 
 func runForEachPackage(ctx context.Context, cmd string, args ...string) error {

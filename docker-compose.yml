@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    ports:
+      - "5440:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    command:
+      - "postgres"
+      - -c
+      - wal_level=minimal # write even less to disk to speed up unit tests
+      - -c
+      - max_wal_senders=0 # write even less to disk to speed up unit tests
+    tmpfs:
+      - /var/lib/postgresql/data:rw # speeds up writing for testing
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-p", "5432"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
