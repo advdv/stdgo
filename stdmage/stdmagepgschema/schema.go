@@ -23,7 +23,8 @@ import (
 
 var migrationsDir = "not_initialized"
 
-func Init(dir string) {
+// Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
+func Init(dir string, _ ...[]string) {
 	migrationsDir = dir
 
 	if _, err := os.Stat(migrationsDir); err != nil {

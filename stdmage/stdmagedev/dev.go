@@ -8,8 +8,8 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
-// Init inits the mage targets.
-func Init() {
+// Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
+func Init(...[]string) {
 	stdmage.MustBeInRootIfNotTest()
 }
 
