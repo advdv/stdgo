@@ -31,6 +31,8 @@ func (Dev) Lint(ctx context.Context) error {
 		return fmt.Errorf("failed to vet each package: %w", err)
 	}
 
+	ctx = context.WithValue(ctx, "concurrency", 1) //nolint:revive,staticcheck
+
 	return runForEachPackage(ctx, "golangci-lint", "run")
 }
 
@@ -40,8 +42,8 @@ func (Dev) Test(ctx context.Context) error {
 }
 
 // Release tags a new version and pushes it.
-func (Dev) Release() error {
-	return forEachPackageDir(func(e os.DirEntry) error {
+func (Dev) Release(ctx context.Context) error {
+	return forEachPackageDir(ctx, func(e os.DirEntry) error {
 		filename := filepath.Join(e.Name(), "version.txt")
 		version, err := os.ReadFile(filename)
 		if os.IsNotExist(err) {
@@ -71,7 +73,7 @@ func (Dev) Release() error {
 }
 
 func runForEachPackage(ctx context.Context, cmd string, args ...string) error {
-	return forEachPackageDir(func(e os.DirEntry) error {
+	return forEachPackageDir(ctx, func(e os.DirEntry) error {
 		cmd := exec.CommandContext(ctx, cmd, args...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
@@ -85,8 +87,13 @@ func runForEachPackage(ctx context.Context, cmd string, args ...string) error {
 	})
 }
 
-func forEachPackageDir(fn func(e os.DirEntry) error) error {
-	return rill.ForEach(rill.FromSlice(os.ReadDir(".")), runtime.NumCPU(), func(e os.DirEntry) error {
+func forEachPackageDir(ctx context.Context, fn func(e os.DirEntry) error) error {
+	concurrency, ok := ctx.Value("concurrency").(int)
+	if !ok {
+		concurrency = runtime.NumCPU()
+	}
+
+	return rill.ForEach(rill.FromSlice(os.ReadDir(".")), concurrency, func(e os.DirEntry) error {
 		if !e.IsDir() {
 			return nil
 		}

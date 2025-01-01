@@ -1,7 +1,6 @@
 // Package stdcdk provides some re-usable code for building AWS CDK constructs.
 package stdcdk
 
-
 import (
 	"fmt"
 	"os"
