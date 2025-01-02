@@ -17,7 +17,7 @@ import (
 // Config configures the package.
 type Config struct {
 	// BindAddrPort configures where the web server will listen for incoming tcp traffic
-	BindAddrPort string `env:"BIND_ADDR_PORT" envDefault:"127.0.0.1:8282"`
+	BindAddrPort string `env:"BIND_ADDR_PORT" envDefault:"0.0.0.0:8282"`
 	// HTTP read timeout, See: https://blog.cloudflare.com/exposing-go-on-the-internet/
 	ReadTimeout time.Duration `env:"READ_TIMEOUT" envDefault:"5s"`
 	// HTTP read header timeout, See: https://blog.cloudflare.com/exposing-go-on-the-internet/
