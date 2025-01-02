@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestLogger(t *testing.T) {
+func TestNonTestingLogger(t *testing.T) {
 	tmpfp := filepath.Join(t.TempDir(), fmt.Sprintf("test_logging_%d.log", time.Now().UnixNano()))
 	var logs *zap.Logger
 

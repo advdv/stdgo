@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdhttpserverfx"
+	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 func TestServe(t *testing.T) {
@@ -19,9 +19,10 @@ func TestServe(t *testing.T) {
 	var addr netip.AddrPort
 	ctx, app := context.Background(), fx.New(
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
-		fx.Provide(zap.NewExample),
 		fx.Populate(&addr),
 
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
 		stdhttpserverfx.Provide(),
 	)
 

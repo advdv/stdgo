@@ -102,12 +102,16 @@ func newEncoderConfig(cfg Config) zapcore.EncoderConfig {
 // Provide provides the package's components as an fx module.
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdzap", New,
+		sharedProvide(),
+		fx.Provide(fx.Private, zapcore.NewCore, newWriteSyncer),
+	)
+}
+
+func sharedProvide() fx.Option {
+	return fx.Options(
 		fx.Provide(fx.Private,
-			zapcore.NewCore,
-			newWriteSyncer,
 			newLevelEnabler,
 			newEncoder,
 			newEncoderConfig,
-		),
-	)
+		))
 }
