@@ -21,7 +21,7 @@ func newTestingCore(
 
 // TestProvide provides the package's components as an fx module with a configuration for testing.
 func TestProvide(tb zaptest.TestingT) fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdzap-test", New,
+	return stdfx.ZapEnvCfgModule[Config]("stdzap", New,
 		sharedProvide(),
 		fx.Provide(fx.Private, func() zapcore.WriteSyncer { return zaptest.NewTestingWriter(tb) }),
 		fx.Provide(newTestingCore),

@@ -17,11 +17,28 @@ import (
 func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString string) *pgxpool.Pool {
 	tb.Helper()
 
+	migrator := SnapshotMigrater[*sql.DB](snapshotFile)
+	connString = PgxTestDBConnString(tb, migrator, connString)
+
+	pcfg, err := pgxpool.ParseConfig(connString)
+	require.NoError(tb, err)
+
+	rw, err := pgxpool.NewWithConfig(ctx, pcfg)
+	require.NoError(tb, err)
+	tb.Cleanup(func() { rw.Close() })
+
+	return rw
+}
+
+// PgxTestDBConnString will use the pgtestdb package to migrate, creates a isolated database and returns the
+// connection string to that database..
+func PgxTestDBConnString(tb testing.TB, migrator pgtestdb.Migrator, connString string) string {
+	tb.Helper()
+
 	cfg, err := pgx.ParseConfig(connString)
 	require.NoError(tb, err)
 
-	migrator := SnapshotMigrater[*sql.DB](snapshotFile)
-	connString = pgtestdb.Custom(tb, pgtestdb.Config{
+	return pgtestdb.Custom(tb, pgtestdb.Config{
 		DriverName: "pgx",
 		User:       cfg.User,
 		Password:   cfg.Password,
@@ -34,13 +51,4 @@ func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString s
 			Capabilities: pgtestdb.DefaultRoleCapabilities,
 		},
 	}, migrator).URL()
-
-	pcfg, err := pgxpool.ParseConfig(connString)
-	require.NoError(tb, err)
-
-	rw, err := pgxpool.NewWithConfig(ctx, pcfg)
-	require.NoError(tb, err)
-	tb.Cleanup(func() { rw.Close() })
-
-	return rw
 }
