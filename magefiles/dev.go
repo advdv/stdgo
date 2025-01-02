@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -45,8 +46,8 @@ func (Dev) Test(ctx context.Context) error {
 
 // Release tags a new version and pushes it.
 func (Dev) Release(ctx context.Context) error {
-	return forEachPackageDir(ctx, func(e os.DirEntry) error {
-		filename := filepath.Join(e.Name(), "version.txt")
+	return forEachPackageDir(ctx, func(e PkgDirEntry) error {
+		filename := filepath.Join(e.Path(), "version.txt")
 		version, err := os.ReadFile(filename)
 		if os.IsNotExist(err) {
 			return nil // skip
@@ -58,7 +59,7 @@ func (Dev) Release(ctx context.Context) error {
 			return errors.New("version must be in format vX,Y,Z")
 		}
 
-		tagName := fmt.Sprintf("%s/%s", e.Name(), string(version))
+		tagName := fmt.Sprintf("%s/%s", e.TagName(), string(version))
 
 		stderr := bytes.NewBuffer(nil)
 		_, err = sh.Exec(nil, nil, stderr, "git", "tag", tagName)
@@ -88,36 +89,62 @@ func (Dev) Serve() error {
 }
 
 func runForEachPackage(ctx context.Context, cmd string, args ...string) error {
-	return forEachPackageDir(ctx, func(e os.DirEntry) error {
+	return forEachPackageDir(ctx, func(e PkgDirEntry) error {
 		cmd := exec.CommandContext(ctx, cmd, args...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
-		cmd.Dir = e.Name()
+		cmd.Dir = e.Path()
 
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to run in sub package '%s': %w", e.Name(), err)
+			return fmt.Errorf("failed to run in sub package '%s': %w", e.Path(), err)
 		}
 
 		return nil
 	})
 }
 
-func forEachPackageDir(ctx context.Context, fn func(e os.DirEntry) error) error {
+type PkgDirEntry struct {
+	SubDir string
+	IsDir  bool
+	Name   string
+}
+
+func (e PkgDirEntry) Path() string {
+	if e.IsDir {
+		return filepath.Join(e.SubDir, e.Name)
+	}
+	return e.Name
+}
+
+func (e PkgDirEntry) TagName() string {
+	return path.Join(e.SubDir, e.Name)
+}
+
+func forEachPackageDir(ctx context.Context, fnc func(e PkgDirEntry) error) error {
 	concurrency, ok := ctx.Value("concurrency").(int)
 	if !ok {
 		concurrency = runtime.NumCPU()
 	}
 
-	return rill.ForEach(rill.FromSlice(os.ReadDir(".")), concurrency, func(e os.DirEntry) error {
-		if !e.IsDir() {
+	nonFxDirs := rill.Map(rill.FromSlice(os.ReadDir(".")), 1, func(e os.DirEntry) (PkgDirEntry, error) {
+		return PkgDirEntry{"", e.IsDir(), e.Name()}, nil
+	})
+
+	fxDirs := rill.Map(rill.FromSlice(os.ReadDir("./fx/")), 1, func(e os.DirEntry) (PkgDirEntry, error) {
+		return PkgDirEntry{"fx", e.IsDir(), e.Name()}, nil
+	})
+
+	return rill.ForEach(rill.Merge(nonFxDirs, fxDirs), concurrency, func(e PkgDirEntry) error {
+		if !e.IsDir {
 			return nil
 		}
 
-		if _, err := os.Stat(filepath.Join(e.Name(), "go.mod")); err != nil {
+		filename := filepath.Join(e.Path(), "go.mod")
+		if _, err := os.Stat(filename); err != nil {
 			return nil //nolint:nilerr
 		}
 
-		return fn(e)
+		return fnc(e)
 	})
 }
 
