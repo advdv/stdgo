@@ -49,6 +49,8 @@ func newListener(ap netip.AddrPort) (*net.TCPListener, error) {
 // Params describe the fx parameters.
 type Params struct {
 	fx.In
+	fx.Lifecycle
+
 	Config   Config
 	Logs     *zap.Logger
 	Handler  http.Handler
@@ -62,41 +64,44 @@ type Result struct {
 }
 
 // New inits the http server.
-func New(p Params) Result {
-	return Result{Server: &http.Server{
-		ReadTimeout:       p.Config.ReadTimeout,
-		ReadHeaderTimeout: p.Config.ReadTimeout,
-		WriteTimeout:      p.Config.WriteTimeout,
-		IdleTimeout:       p.Config.IdleTimeout,
-		Handler:           p.Handler,
-		ErrorLog:          zap.NewStdLog(p.Logs),
-	}}
+func New(params Params) (Result, error) {
+	srv := &http.Server{
+		ReadTimeout:       params.Config.ReadTimeout,
+		ReadHeaderTimeout: params.Config.ReadTimeout,
+		WriteTimeout:      params.Config.WriteTimeout,
+		IdleTimeout:       params.Config.IdleTimeout,
+		Handler:           params.Handler,
+		ErrorLog:          zap.NewStdLog(params.Logs),
+	}
+
+	params.Lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			go srv.Serve(params.Listener) //nolint:errcheck
+
+			params.Logs.Info("http server started", zap.Stringer("addr", params.Listener.Addr()))
+
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			dl, hasdl := ctx.Deadline()
+			params.Logs.Info("shutting down http server", zap.Bool("has_dl", hasdl), zap.Duration("dl", time.Until(dl)))
+
+			if err := srv.Shutdown(ctx); err != nil {
+				return fmt.Errorf("failed to shut down: %w", err)
+			}
+
+			return nil
+		},
+	})
+
+	return Result{Server: srv}, nil
 }
 
 // Provide dependencies.
 func Provide() fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdhttpserver",
-
+	return stdfx.ZapEnvCfgModule[Config]("stdhttpserver", New,
 		fx.Provide(newAddr),
 		fx.Provide(fx.Private, newListener),
-		fx.Provide(fx.Private, fx.Annotate(New,
-			fx.OnStart(func(_ context.Context, logs *zap.Logger, ln *net.TCPListener, s *http.Server) error {
-				go s.Serve(ln) //nolint:errcheck
-
-				logs.Info("http server started", zap.Stringer("addr", ln.Addr()))
-
-				return nil
-			}),
-			fx.OnStop(func(ctx context.Context, logs *zap.Logger, s *http.Server) error {
-				dl, hasdl := ctx.Deadline()
-				logs.Info("shutting down http server", zap.Bool("has_dl", hasdl), zap.Duration("dl", time.Until(dl)))
-
-				if err := s.Shutdown(ctx); err != nil {
-					return fmt.Errorf("failed to shut down: %w", err)
-				}
-
-				return nil
-			}))),
 		fx.Invoke(func(*http.Server) {}),
 	)
 }
