@@ -19,7 +19,7 @@ func TestServe(t *testing.T) {
 	var addr netip.AddrPort
 	ctx, app := context.Background(), fx.New(
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
-		fx.Provide(zap.NewDevelopment),
+		fx.Provide(zap.NewExample),
 		fx.Populate(&addr),
 
 		stdwebservefx.Provide(),

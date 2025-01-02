@@ -7,10 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"strings"
 	"time"
 
-	"github.com/advdv/stdgo/stdenvcfg"
+	"github.com/advdv/stdgo/stdfx"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -74,14 +73,9 @@ func New(p Params) Result {
 	}}
 }
 
-// moduleName names the module and scopes the logger and config.
-const moduleName = "stdwebservefx"
-
 // Provide dependencies.
 func Provide() fx.Option {
-	return fx.Module(moduleName,
-		stdenvcfg.Provide[Config](strings.ToUpper(moduleName)+"_"),
-		fx.Decorate(func(l *zap.Logger) *zap.Logger { return l.Named(moduleName) }),
+	return stdfx.ZapEnvCfgModule[Config]("stdwebserve",
 
 		fx.Provide(newAddr),
 		fx.Provide(fx.Private, newListener),
