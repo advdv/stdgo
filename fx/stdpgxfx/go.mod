@@ -1,4 +1,4 @@
-module github.com/advdv/stdgo/stdpgxfx
+module github.com/advdv/stdgo/fx/stdpgxfx
 
 go 1.23.4
 
