@@ -1,5 +1,5 @@
-// Package stdwebservefx provides a web server.
-package stdwebservefx
+// Package stdhttpserverfx provides a web server.
+package stdhttpserverfx
 
 import (
 	"context"
@@ -75,7 +75,7 @@ func New(p Params) Result {
 
 // Provide dependencies.
 func Provide() fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdwebserve",
+	return stdfx.ZapEnvCfgModule[Config]("stdhttpserver",
 
 		fx.Provide(newAddr),
 		fx.Provide(fx.Private, newListener),

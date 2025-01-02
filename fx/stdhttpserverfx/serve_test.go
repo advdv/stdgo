@@ -1,4 +1,4 @@
-package stdwebservefx_test
+package stdhttpserverfx_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/advdv/stdgo/fx/stdwebservefx"
+	"github.com/advdv/stdgo/fx/stdhttpserverfx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -22,7 +22,7 @@ func TestServe(t *testing.T) {
 		fx.Provide(zap.NewExample),
 		fx.Populate(&addr),
 
-		stdwebservefx.Provide(),
+		stdhttpserverfx.Provide(),
 	)
 
 	require.NoError(t, app.Start(ctx))
