@@ -21,14 +21,25 @@ var (
 	qualifier = "__uninitialized"
 	// docker image targets to build.
 	targets = []string{}
+	// policies for bootstrapping.
+	policies = []string{}
+	// no noStaging can be set to true for projects that don't really have the concept of noStaging.
+	noStaging bool
 )
 
 // Init initializes the mage targets.
-func Init(awsRegion, awsProfile, cdkQualifier string, dockerImageTargets []string) {
+func Init(
+	awsRegion, awsProfile, cdkQualifier string,
+	dockerImageTargets []string,
+	executionPolicies []string,
+	noStagingEnv bool,
+) {
 	region = awsRegion
 	profile = awsProfile
 	qualifier = cdkQualifier
 	targets = dockerImageTargets
+	policies = executionPolicies
+	noStaging = noStagingEnv
 }
 
 // Bootstrap the infra stack using AWS CDK.
@@ -41,15 +52,13 @@ func Bootstrap(env string) error {
 		return fmt.Errorf("failed to get account id: %w", err)
 	}
 
+	policyNames := append([]string{
+		fmt.Sprintf("arn:aws:iam::%s:policy/StandardCdkBaseExecPolicy", accountID),
+	}, policies...)
+
 	return cdk(env, qual, "bootstrap",
 		"--profile", profile,
-		"--cloudformation-execution-policies", strings.Join([]string{
-			fmt.Sprintf("arn:aws:iam::%s:policy/StandardCdkBaseExecPolicy", accountID),
-			"arn:aws:iam::aws:policy/SecretsManagerReadWrite",
-			"arn:aws:iam::aws:policy/AmazonEC2FullAccess",
-			"arn:aws:iam::aws:policy/AmazonRDSFullAccess",
-			"arn:aws:iam::aws:policy/AWSKeyManagementServicePowerUser",
-		}, ","),
+		"--cloudformation-execution-policies", strings.Join(policyNames, ","),
 	)
 }
 
@@ -204,6 +213,10 @@ func profileFromEnv(env string) (string, string) {
 	case "prod":
 		return profile, qual + "P"
 	case "stag":
+		if noStaging {
+			panic("staging no enabled")
+		}
+
 		return profile, qual + "S"
 	default:
 		panic("unsupported: " + env)

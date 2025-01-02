@@ -19,8 +19,6 @@
   },
   "buf.binaryPath": "/Users/adam/go/bin/buf",
   "go.lintTool": "golangci-lint",
-  // "go.lintOnSave": "workspace",
-  // "go.lintFlags": [],
   "go.useLanguageServer": true,
   "editor.rulers": [120],
   "gopls": {
