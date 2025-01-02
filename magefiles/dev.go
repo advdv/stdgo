@@ -4,7 +4,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -56,7 +55,7 @@ func (Dev) Release(ctx context.Context) error {
 		}
 
 		if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match(version) {
-			return errors.New("version must be in format vX,Y,Z")
+			return fmt.Errorf("%s: version must be in format vX,Y,Z", filename)
 		}
 
 		tagName := fmt.Sprintf("%s/%s", e.TagName(), string(version))
