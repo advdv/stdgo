@@ -12,11 +12,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// PgTestDBHook can be provided to modify the testdb configuration before it's being used
+// in creating a pgx connection pool.
+type PgTestDBHook func(*pgtestdb.Config)
+
 type testingPoolConfigParams struct {
 	fx.In
-	Cfg      Config
-	Logs     *zap.Logger
-	Migrater pgtestdb.Migrator `optional:"true"`
+	Cfg          Config
+	Logs         *zap.Logger
+	Migrater     pgtestdb.Migrator `optional:"true"`
+	PgTestDBHook PgTestDBHook      `optional:"true"`
 }
 
 // testingPoolConfigProvider is a provider factory that can optionally create an isolated and migrated testing
@@ -26,7 +31,13 @@ func testingPoolConfigProvider(tb testing.TB) func(p testingPoolConfigParams) (*
 
 	return func(p testingPoolConfigParams) (*pgxpool.Config, error) {
 		if p.Migrater != nil {
+			p.Logs.Info("non-nill migrater, creating migrated test database")
+
 			testCfg := stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, nil)
+			if p.PgTestDBHook != nil {
+				p.PgTestDBHook(testCfg)
+			}
+
 			p.Cfg.RWDatabaseURL = testCfg.URL()
 		}
 

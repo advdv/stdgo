@@ -127,15 +127,20 @@ func TestPgxTestProvideWithMigrater(t *testing.T) {
 
 func TestPgxTestProvideWithSnapshotMigrater(t *testing.T) {
 	ctx := setup(t)
-
+	var hookCalled bool
 	var rw *pgxpool.Pool
 	app := fxtest.New(t,
+		fx.Supply(stdpgxfx.PgTestDBHook(func(c *pgtestdb.Config) {
+			hookCalled = true
+		})),
 		fx.Populate(&rw),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
 		stdpgxfx.TestProvide(t),
 		stdpgxfx.SnapshotProvide("testdata/snapshot1.sql"),
 	)
+
+	require.True(t, hookCalled)
 
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)

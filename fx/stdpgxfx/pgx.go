@@ -23,21 +23,6 @@ type Config struct {
 	PoolCloseTimeout time.Duration `env:"POOL_CLOSE_TIMEOUT" envDefault:"5s"`
 }
 
-// Params define the dependencies of the main component(s).
-type Params struct {
-	fx.In
-	fx.Lifecycle
-	Logs          *zap.Logger
-	Config        Config
-	PgxPoolConfig *pgxpool.Config
-}
-
-// Result declare the main components produced by this package.
-type Result struct {
-	fx.Out
-	RW *pgxpool.Pool `name:"rw"`
-}
-
 // NewPoolConfig inits a pool configuration from the package config.
 func NewPoolConfig(cfg Config, logs *zap.Logger) (*pgxpool.Config, error) {
 	pcfg, err := pgxpool.ParseConfig(cfg.RWDatabaseURL)
@@ -53,6 +38,21 @@ func NewPoolConfig(cfg Config, logs *zap.Logger) (*pgxpool.Config, error) {
 		zap.String("host", pcfg.ConnConfig.Host))
 
 	return pcfg, nil
+}
+
+// Params define the dependencies of the main component(s).
+type Params struct {
+	fx.In
+	fx.Lifecycle
+	Logs          *zap.Logger
+	Config        Config
+	PgxPoolConfig *pgxpool.Config
+}
+
+// Result declare the main components produced by this package.
+type Result struct {
+	fx.Out
+	RW *pgxpool.Pool `name:"rw"`
 }
 
 // New build the main components of this package.
