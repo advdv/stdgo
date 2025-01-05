@@ -21,11 +21,15 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-var migrationsDir = "not_initialized"
+var (
+	migrationsDir = "not_initialized"
+	urlEnv        = "DATABASE_URL"
+)
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
-func Init(dir string, _ ...[]string) {
+func Init(dir string, databaseURLEnvVarName string, _ ...[]string) {
 	migrationsDir = dir
+	urlEnv = databaseURLEnvVarName
 
 	if _, err := os.Stat(migrationsDir); err != nil {
 		panic("failed to stat migrations dir '" + migrationsDir + "', make sure it exists")
@@ -80,7 +84,7 @@ func Snapshot(ctx context.Context) error {
 	}
 
 	// run pg_dump to sql representation
-	ccfg := stdlo.Must1(pgx.ParseConfig(os.Getenv("DATABASE_URL")))
+	ccfg := stdlo.Must1(pgx.ParseConfig(os.Getenv(urlEnv)))
 	stdlo.Must0(os.MkdirAll(filepath.Join("migrations", "snapshot"), 0o744))
 	if err := sh.Run("docker", "run",
 		"--rm", "--network", "host",
@@ -112,7 +116,7 @@ func runWithSQL(ctx context.Context, env string, runf func(ctx context.Context, 
 		return fmt.Errorf("failed to load env: %w", err)
 	}
 
-	connCfg, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+	connCfg, err := pgx.ParseConfig(os.Getenv(urlEnv))
 	if err != nil {
 		return fmt.Errorf("failed to parse database config: %w", err)
 	}
