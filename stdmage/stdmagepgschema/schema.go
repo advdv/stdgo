@@ -79,6 +79,7 @@ func Snapshot(ctx context.Context) error {
 		Builder[bool]().
 		WithDelay(time.Millisecond*500).
 		WithMaxDuration(time.Second*10).
+		WithMaxRetries(10).
 		Build()); err != nil {
 		return fmt.Errorf("failed to retry: %w", err)
 	}
