@@ -12,41 +12,36 @@ import (
 	"go.uber.org/zap"
 )
 
-// PgTestDBHook can be provided to modify the testdb configuration before it's being used
-// in creating a pgx connection pool.
-type PgTestDBHook func(*pgtestdb.Config)
-
 type testingPoolConfigParams struct {
 	fx.In
-	Cfg          Config
-	Logs         *zap.Logger
-	Migrater     pgtestdb.Migrator `optional:"true"`
-	PgTestDBHook PgTestDBHook      `optional:"true"`
+	Cfg      Config
+	Logs     *zap.Logger
+	Migrater pgtestdb.Migrator `optional:"true"`
 }
 
 // testingPoolConfigProvider is a provider factory that can optionally create an isolated and migrated testing
 // database using the testdb package.
-func testingPoolConfigProvider(tb testing.TB) func(p testingPoolConfigParams) (*pgxpool.Config, error) {
+func testingPoolConfigProvider(
+	tb testing.TB,
+) func(p testingPoolConfigParams) (*pgxpool.Config, *pgtestdb.Config, error) {
 	tb.Helper()
 
-	return func(p testingPoolConfigParams) (*pgxpool.Config, error) {
+	var testCfg *pgtestdb.Config
+	return func(p testingPoolConfigParams) (*pgxpool.Config, *pgtestdb.Config, error) {
 		if p.Migrater != nil {
 			p.Logs.Info("non-nill migrater, creating migrated test database")
 
-			testCfg := stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, nil)
-			if p.PgTestDBHook != nil {
-				p.PgTestDBHook(testCfg)
-			}
-
+			testCfg = stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, nil)
 			p.Cfg.RWDatabaseURL = testCfg.URL()
 		}
 
-		return NewPoolConfig(p.Cfg, p.Logs)
+		pool, err := NewPoolConfig(p.Cfg, p.Logs)
+		return pool, testCfg, err
 	}
 }
 
 // TestProvide provides the package's components as an fx module with a setup more useful for testing.
-func TestProvide(tb testing.TB) fx.Option {
+func TestProvide(tb testing.TB, derivedPoolNames ...string) fx.Option {
 	tb.Helper()
 
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx",
@@ -57,6 +52,8 @@ func TestProvide(tb testing.TB) fx.Option {
 			fx.Annotate(func(p *pgxpool.Pool) *pgxpool.Pool {
 				return p
 			}, fx.ParamTags(`name:"rw"`))),
+		// included derived pools
+		withDerivedPools(derivedPoolNames...),
 	)
 }
 

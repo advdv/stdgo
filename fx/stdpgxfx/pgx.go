@@ -57,17 +57,24 @@ type Result struct {
 
 // New build the main components of this package.
 func New(params Params) (res Result, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), params.Config.PoolConnectionTimeout)
+	res.RW, err = newPool(params.Lifecycle, params.Config, params.PgxPoolConfig, params.Logs)
+	return res, err
+}
+
+// newPool is used for initializing a connection pool based on configs so we can also used it to
+// created derived connection pools.
+func newPool(lc fx.Lifecycle, cfg Config, ccfg *pgxpool.Config, logs *zap.Logger) (*pgxpool.Pool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.PoolConnectionTimeout)
 	defer cancel()
 
-	res.RW, err = pgxpool.NewWithConfig(ctx, params.PgxPoolConfig)
+	pool, err := pgxpool.NewWithConfig(ctx, ccfg)
 	if err != nil {
-		return res, fmt.Errorf("failed to connect pool: %w", err)
+		return nil, fmt.Errorf("failed to connect pool: %w", err)
 	}
 
-	params.Lifecycle.Append(fx.Hook{OnStop: closePoolHook(params.Logs, params.Config, res.RW)})
+	lc.Append(fx.Hook{OnStop: closePoolHook(logs, cfg, pool)})
 
-	return res, nil
+	return pool, nil
 }
 
 // closePoolHook will attempt to close the connection pool but continues shutdown if the ctx expires. We cannot pass a
@@ -96,8 +103,43 @@ func closePoolHook(logs *zap.Logger, cfg Config, rw interface{ Close() }) func(c
 }
 
 // Provide components as fx dependencies.
-func Provide() fx.Option {
+func Provide(derivedPoolNames ...string) fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx",
-		New, fx.Provide(fx.Private, NewPoolConfig),
+		New,
+		fx.Provide(fx.Private, NewPoolConfig),
+		withDerivedPools(derivedPoolNames...),
 	)
+}
+
+// Deriver needs to be provided by the user of this module if derived pools are created.
+type Deriver func(base *pgxpool.Config) *pgxpool.Config
+
+// ProvideDeriver is a short-hande function for providing a named deriver function that.
+func ProvideDeriver(name string, deriver Deriver) fx.Option {
+	return fx.Supply(fx.Annotate(deriver, fx.ResultTags(`name:"`+name+`"`)))
+}
+
+// withDerivedPools dynamically adds fx provides for creating connection pools that
+// take the base pool as input.
+func withDerivedPools(names ...string) fx.Option {
+	options := make([]fx.Option, 0, len(names))
+	for _, name := range names {
+		options = append(options, fx.Provide(
+			fx.Annotate(func(
+				base *pgxpool.Pool, deriver Deriver, lc fx.Lifecycle, cfg Config, logs *zap.Logger,
+			) (derived *pgxpool.Pool, err error) {
+				// here, we derive the acual pool. We use the same constructor as the main but with a new configuration
+				// that is build from the deriver, given the base pool.
+				derived, err = newPool(lc, cfg, deriver(base.Config().Copy()), logs)
+				if err != nil {
+					return nil, fmt.Errorf("failed to created derived pool: %w", err)
+				}
+
+				logs.Info("initialized derived pool", zap.String("name", name))
+
+				return derived, nil
+			}, fx.ParamTags(`name:"rw"`, `name:"`+name+`"`), fx.ResultTags(`name:"`+name+`"`))))
+	}
+
+	return fx.Options(options...)
 }
