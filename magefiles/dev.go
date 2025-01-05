@@ -30,7 +30,7 @@ func (Dev) Release() error {
 		return fmt.Errorf("failed to read version file: %w", err)
 	}
 
-	if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match(version) {
+	if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match(bytes.TrimSpace(version)) {
 		return fmt.Errorf("%s: version must be in format vX,Y,Z", filename)
 	}
 
