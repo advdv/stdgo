@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -18,9 +19,9 @@ func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString s
 	tb.Helper()
 
 	migrator := SnapshotMigrater[*sql.DB](snapshotFile)
-	connString = PgxTestDBConnString(tb, migrator, connString)
+	testCfg := NewPgxTestDB(tb, migrator, connString, nil)
 
-	pcfg, err := pgxpool.ParseConfig(connString)
+	pcfg, err := pgxpool.ParseConfig(testCfg.URL())
 	require.NoError(tb, err)
 
 	rw, err := pgxpool.NewWithConfig(ctx, pcfg)
@@ -30,12 +31,20 @@ func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString s
 	return rw
 }
 
-// PgxTestDBConnString will use the pgtestdb package to migrate, creates a isolated database and returns the
+// NewPgxTestDB will use the pgtestdb package to migrate, creates a isolated database and returns the
 // connection string to that database..
-func PgxTestDBConnString(tb testing.TB, migrator pgtestdb.Migrator, connString string) string {
+func NewPgxTestDB(
+	tb testing.TB,
+	migrator pgtestdb.Migrator,
+	setupConnStr string,
+	testRole *pgtestdb.Role,
+) *pgtestdb.Config {
 	tb.Helper()
 
-	cfg, err := pgx.ParseConfig(connString)
+	cfg, err := pgx.ParseConfig(setupConnStr)
+	require.NoError(tb, err)
+
+	urlParsed, err := url.Parse(cfg.ConnString())
 	require.NoError(tb, err)
 
 	return pgtestdb.Custom(tb, pgtestdb.Config{
@@ -43,12 +52,9 @@ func PgxTestDBConnString(tb testing.TB, migrator pgtestdb.Migrator, connString s
 		User:       cfg.User,
 		Password:   cfg.Password,
 		Host:       cfg.Host,
+		Database:   cfg.Database,
 		Port:       fmt.Sprintf("%d", cfg.Port),
-		Options:    "sslmode=disable",
-		TestRole: &pgtestdb.Role{
-			Username:     "postgres",
-			Password:     "postgres",
-			Capabilities: pgtestdb.DefaultRoleCapabilities,
-		},
-	}, migrator).URL()
+		Options:    urlParsed.RawQuery,
+		TestRole:   testRole,
+	}, migrator)
 }

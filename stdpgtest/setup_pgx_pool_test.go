@@ -19,4 +19,5 @@ func TestSetupPgxPool(t *testing.T) {
 
 	pool := stdpgtest.SetupPgxPool(ctx, t, filepath.Join("testdata", "snapshot.sql"), connStr)
 	require.NotNil(t, pool)
+	require.NoError(t, pool.Ping(ctx))
 }

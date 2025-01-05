@@ -3,9 +3,10 @@ module github.com/advdv/stdgo/fx/stdpgxfx
 go 1.23.4
 
 require (
-	github.com/advdv/stdgo/fx/stdzapfx v0.0.2
+	github.com/advdv/stdgo/fx/stdzapfx v0.0.3
 	github.com/advdv/stdgo/stdfx v0.0.2
 	github.com/advdv/stdgo/stdlo v0.0.1
+	github.com/advdv/stdgo/stdpgtest v0.0.2
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/peterldowns/pgtestdb v0.1.1
 	github.com/peterldowns/pgtestdb/migrators/goosemigrator v0.1.1
@@ -21,10 +22,10 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/pressly/goose/v3 v3.22.1 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/pressly/goose/v3 v3.24.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

@@ -26,7 +26,8 @@ func testingPoolConfigProvider(tb testing.TB) func(p testingPoolConfigParams) (*
 
 	return func(p testingPoolConfigParams) (*pgxpool.Config, error) {
 		if p.Migrater != nil {
-			p.Cfg.RWDatabaseURL = stdpgtest.PgxTestDBConnString(tb, p.Migrater, p.Cfg.RWDatabaseURL)
+			testCfg := stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, nil)
+			p.Cfg.RWDatabaseURL = testCfg.URL()
 		}
 
 		return NewPoolConfig(p.Cfg, p.Logs)
