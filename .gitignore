@@ -25,4 +25,4 @@ go.work.sum
 .env
 test-report.xml
 .DS_Store
-*.env
+.env.*
