@@ -81,3 +81,6 @@ func RunNewApp(opts ...fx.Option) (exitCode int) {
 	app := fx.New(append(opts, fx.Populate(&run))...)
 	return RunApp(app, run.H, run.O...)
 }
+
+// Run will create a new fx app and run it, passing any exit code to os.Exit.
+func Run(opts ...fx.Option) { os.Exit(RunNewApp(opts...)) }
