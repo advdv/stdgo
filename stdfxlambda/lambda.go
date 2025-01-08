@@ -10,11 +10,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// Handler is an interface that can be implemented to handle Lambda events.
-type Handler[I, O any] interface {
-	Handle(ctx context.Context, input I) (O, error)
-}
-
 // we have a about 500ms until SIGKILL is sent, so we set the startup context something just short of that
 // https://pkg.go.dev/github.com/aws/aws-lambda-go/lambda#WithEnableSIGTERM
 const lambdaStopTimeout = time.Millisecond * (500 - 10) //nolint:mnd
