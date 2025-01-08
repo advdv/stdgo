@@ -1,5 +1,5 @@
-// Package stdlambda provides a typed context to standardize handling in our Lambda functions.
-package stdlambda
+// Package stdfxlambda provides a typed context to standardize handling in our Lambda functions.
+package stdfxlambda
 
 import (
 	"context"

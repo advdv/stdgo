@@ -1,5 +1,5 @@
-// Package stdlambda allows a lambda to be implemented via a Uber's fx dependency.
-package stdlambda
+// Package stdfxlambda allows a lambda to be implemented via a Uber's fx dependency.
+package stdfxlambda
 
 import (
 	"context"
@@ -67,4 +67,17 @@ func RunApp(app *fx.App, hdlr lambda.Handler, opts ...lambda.Option) (exitCode i
 	lambdaStartFunc(hdlr, opts...)
 
 	return exitCode
+}
+
+// RunNewApp will create an fx App and calls RunApp with the handler and options populated from
+// the fx dependencies.
+func RunNewApp(opts ...fx.Option) (exitCode int) {
+	var run struct {
+		fx.In
+		H lambda.Handler
+		O []lambda.Option `optional:"true"`
+	}
+
+	app := fx.New(append(opts, fx.Populate(&run))...)
+	return RunApp(app, run.H, run.O...)
 }

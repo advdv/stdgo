@@ -1,11 +1,11 @@
-package stdlambda_test
+package stdfxlambda_test
 
 import (
 	"context"
 	"strconv"
 	"testing"
 
-	"github.com/advdv/stdgo/stdlambda"
+	"github.com/advdv/stdgo/stdfxlambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -48,7 +48,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 			var actReqID string
 			var actFuncARN string
 
-			handleFn := func(ctx stdlambda.Context, inp inputA) (out inputB, err error) {
+			handleFn := func(ctx stdfxlambda.Context, inp inputA) (out inputB, err error) {
 				actLogger = ctx.Log()
 				actReqID = ctx.AWSRequestID()
 				actFuncARN = ctx.InvokedFunctionARN()
@@ -57,7 +57,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 				return
 			}
 
-			outb, err := stdlambda.Handle(tt.ctx, logs, []byte(`{"bar":"foo"}`), handleFn)
+			outb, err := stdfxlambda.Handle(tt.ctx, logs, []byte(`{"bar":"foo"}`), handleFn)
 			require.NoError(t, err)
 			require.JSONEq(t, `{"foo":"bar"}`, string(outb))
 			require.Equal(t, inputA{Bar: "foo"}, actInp)
@@ -74,11 +74,11 @@ func TestHandle_PanicWithoutLambdaContext(t *testing.T) {
 	require.NoError(t, err)
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", "dummy-runtime-api")
 
-	handleFn := func(ctx stdlambda.Context, inp inputA) (out inputB, err error) {
+	handleFn := func(ctx stdfxlambda.Context, inp inputA) (out inputB, err error) {
 		return
 	}
 
 	require.PanicsWithValue(t, "no lambda context available", func() {
-		stdlambda.Handle(ctx, logs, []byte(`{"bar":"foo"}`), handleFn)
+		stdfxlambda.Handle(ctx, logs, []byte(`{"bar":"foo"}`), handleFn)
 	})
 }
