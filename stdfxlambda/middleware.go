@@ -33,3 +33,7 @@ func WithLogger(next lambda.Handler, logs *zap.Logger) lambda.Handler {
 		return next.Invoke(ctx, payload)
 	})
 }
+
+// @TODO create a db.Tx transaction middleware (or pgx.Tx):
+// - Allow setting the isolation level to serializable (for certain constraints to work)
+// - Set the timeout of the transaction to the timeout of the lambda (or a little bit less)
