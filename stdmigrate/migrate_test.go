@@ -20,10 +20,10 @@ func (tx *mockTx1) ExecContext(ctx context.Context, query string, args ...any) (
 	return nil, nil
 }
 
-func (mockTx1) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (*mockTx1) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, nil
 }
-func (mockTx1) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row { return nil }
+func (*mockTx1) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row { return nil }
 
 func TestExecf(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

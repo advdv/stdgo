@@ -47,9 +47,7 @@ linters:
     - funlen # trust our own judgement
     - err113 # too much effort
     - perfsprint #microoptimization
-    - gomnd
     - canonicalheader
-    - execinquery
     - unparam # don't be too smart
     - dupword # gets in the way often when we're commenting out stuff
     - containedctx # actually common for actors/workers that have a context for the lifetime
@@ -57,6 +55,7 @@ linters:
     - nlreturn # too annoying for small functions
     - mnd # just too annoying
     - wrapcheck
+    - exportloopref # deprecated
 
 issues:
   include:

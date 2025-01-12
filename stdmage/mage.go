@@ -25,7 +25,7 @@ func LoadEnv(env string) error {
 		panic("invalid env: " + env)
 	}
 
-	if err := godotenv.Overload(".env", ".env."+env); err != nil {
+	if err := godotenv.Overload(".env", ".env."+env); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load env variables: %w", err)
 	}
 
