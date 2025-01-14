@@ -19,25 +19,33 @@ var (
 	profile = "__uninitialized"
 	// qualifier for the stack.
 	qualifier = "__uninitialized"
-	// docker image targets to build.
-	targets = []string{}
+	// docker image builds to build.
+	builds = []DockerBuild{}
 	// policies for bootstrapping.
 	policies = []string{}
 	// no noStaging can be set to true for projects that don't really have the concept of noStaging.
 	noStaging bool
 )
 
+// DockerBuild describes a Docker image to be build.
+type DockerBuild struct {
+	Name       string
+	DockerFile string
+	Platform   string
+	Context    string
+}
+
 // Init initializes the mage targets.
 func Init(
 	awsRegion, awsProfile, cdkQualifier string,
-	dockerImageTargets []string,
+	dockerBuilds []DockerBuild,
 	executionPolicies []string,
 	noStagingEnv bool,
 ) {
 	region = awsRegion
 	profile = awsProfile
 	qualifier = cdkQualifier
-	targets = dockerImageTargets
+	builds = dockerBuilds
 	policies = executionPolicies
 	noStaging = noStagingEnv
 }
@@ -119,20 +127,33 @@ func Build() error {
 
 // build the docker images.
 func buildImages() error {
-	if err := rill.ForEach(rill.FromSlice(targets, nil), 4, func(target string) error {
-		tag := fmt.Sprintf("%s:%s", strings.ToLower(qualifier), target)
+	if err := rill.ForEach(rill.FromSlice(builds, nil), 4, func(build DockerBuild) error {
+		if build.Platform == "" {
+			build.Platform = "linux/amd64"
+		}
+
+		if build.DockerFile == "" {
+			build.DockerFile = filepath.Join("lambda", build.Name, "Dockerfile")
+		}
+
+		if build.Context == "" {
+			build.Context = "."
+		}
+
+		tag := fmt.Sprintf("%s:%s", strings.ToLower(qualifier), build.Name)
 		if err := sh.RunWith(map[string]string{
-			"DOCKER_BUILDKIT": "1", // only build stages that are required for the target
+			"DOCKER_BUILDKIT":                "1", // only build stages that are required for the target
+			"BUILDX_NO_DEFAULT_ATTESTATIONS": "1", // we ran into: https://github.com/aws/aws-cdk/issues/30258
 		}, "docker", "build",
-			"-f", filepath.Join("lambda", target, "Dockerfile"),
-			"--target", target,
+			"-f", build.DockerFile,
+			"--target", build.Name,
 			"--tag", tag,
-			"--platform", "linux/amd64", "."); err != nil {
+			"--platform", build.Platform, build.Context); err != nil {
 			return fmt.Errorf("failed to build: %w", err)
 		}
 
 		if err := sh.Run("docker", "save", tag,
-			"-o", filepath.Join("infra", "infracdk", "builds", target+".tar"),
+			"-o", filepath.Join("infra", "infracdk", "builds", build.Name+".tar"),
 		); err != nil {
 			return fmt.Errorf("failed to save docker image: %w", err)
 		}
