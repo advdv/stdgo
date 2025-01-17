@@ -17,11 +17,13 @@ import (
 func NewAtlasDirMigrator(
 	migrationsDirPath string,
 	atlasEnv string,
+	atlasConfig string,
 	execute func(ctx context.Context, stdin io.Reader, program string, args ...string) (string, error),
 ) *AtlasDirMigrator {
 	return &AtlasDirMigrator{
 		MigrationsDirPath: migrationsDirPath,
 		AtlasEnv:          atlasEnv,
+		AtlasConfig:       atlasConfig,
 		execute:           execute,
 	}
 }
@@ -39,6 +41,7 @@ func NewAtlasDirMigrator(
 type AtlasDirMigrator struct {
 	MigrationsDirPath string
 	AtlasEnv          string
+	AtlasConfig       string
 
 	execute func(ctx context.Context, stdin io.Reader, program string, args ...string) (string, error)
 }
@@ -63,6 +66,7 @@ func (m *AtlasDirMigrator) Migrate(
 		"--url",
 		templateConf.URL(),
 		"--env", m.AtlasEnv,
+		"--config", m.AtlasConfig,
 	)
 
 	return err

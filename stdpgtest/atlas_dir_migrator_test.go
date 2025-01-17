@@ -27,7 +27,7 @@ func TestAtlasDirMirator(t *testing.T) {
 	}
 
 	dir := filepath.Join("testdata", "migrations1")
-	migrator := stdpgtest.NewAtlasDirMigrator(dir, "local", exec)
+	migrator := stdpgtest.NewAtlasDirMigrator(dir, "local", "file://atlas.hcl", exec)
 
 	hash, err := migrator.Hash()
 	require.NoError(t, err)
@@ -46,5 +46,6 @@ func TestAtlasDirMirator(t *testing.T) {
 		"migrate", "apply",
 		"--url", "postgres://user:pass@host:port/db?foo=bar",
 		"--env", "local",
+		"--config", "file://atlas.hcl",
 	}, actArgs)
 }
