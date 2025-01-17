@@ -19,12 +19,12 @@ func (mdb *mockDB) ExecContext(ctx context.Context, query string, args ...any) (
 	return nil, nil
 }
 
-func TestMigrater(t *testing.T) {
+func TestSnapshotMigrator(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
 	db := &mockDB{}
-	mig := stdpgtest.SnapshotMigrater[*mockDB]("testdata/snapshot.sql")
+	mig := stdpgtest.SnapshotMigrator[*mockDB]("testdata/snapshot.sql")
 
 	h1, err := mig.Hash()
 	require.NoError(t, err)

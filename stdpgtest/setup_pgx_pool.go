@@ -18,7 +18,7 @@ import (
 func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString string) *pgxpool.Pool {
 	tb.Helper()
 
-	migrator := SnapshotMigrater[*sql.DB](snapshotFile)
+	migrator := SnapshotMigrator[*sql.DB](snapshotFile)
 	testCfg := NewPgxTestDB(tb, migrator, connString, nil)
 
 	pcfg, err := pgxpool.ParseConfig(testCfg.URL())

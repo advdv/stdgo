@@ -10,13 +10,13 @@ import (
 	"github.com/peterldowns/pgtestdb"
 )
 
-// SnapshotMigrater loads a migration from a postgres dump file.
-type SnapshotMigrater[T interface {
+// SnapshotMigrator loads a migration from a postgres dump file.
+type SnapshotMigrator[T interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }] string
 
 // Hash implements the migrater interface.
-func (m SnapshotMigrater[T]) Hash() (string, error) {
+func (m SnapshotMigrator[T]) Hash() (string, error) {
 	data, err := m.readSnapshot()
 	if err != nil {
 		return "", err
@@ -26,7 +26,7 @@ func (m SnapshotMigrater[T]) Hash() (string, error) {
 }
 
 // Migrate performs the actual migration.
-func (m SnapshotMigrater[T]) Migrate(ctx context.Context, db T, _ pgtestdb.Config) error {
+func (m SnapshotMigrator[T]) Migrate(ctx context.Context, db T, _ pgtestdb.Config) error {
 	data, err := m.readSnapshot()
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func (m SnapshotMigrater[T]) Migrate(ctx context.Context, db T, _ pgtestdb.Confi
 	return nil
 }
 
-func (m SnapshotMigrater[T]) readSnapshot() ([]byte, error) {
+func (m SnapshotMigrator[T]) readSnapshot() ([]byte, error) {
 	data, err := os.ReadFile(string(m))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read snapshot file: %w", err)
@@ -48,4 +48,4 @@ func (m SnapshotMigrater[T]) readSnapshot() ([]byte, error) {
 	return data, nil
 }
 
-var _ pgtestdb.Migrator = SnapshotMigrater[*sql.DB]("")
+var _ pgtestdb.Migrator = SnapshotMigrator[*sql.DB]("")

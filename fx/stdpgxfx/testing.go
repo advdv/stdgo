@@ -60,6 +60,6 @@ func TestProvide(tb testing.TB, derivedPoolNames ...string) fx.Option {
 // SnapshotProvide provides a snapshot migrater.
 func SnapshotProvide(filename string) fx.Option {
 	return fx.Provide(func() pgtestdb.Migrator {
-		return stdpgtest.SnapshotMigrater[*sql.DB](filename)
+		return stdpgtest.SnapshotMigrator[*sql.DB](filename)
 	})
 }
