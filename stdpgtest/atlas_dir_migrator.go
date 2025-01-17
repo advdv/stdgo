@@ -10,6 +10,9 @@ import (
 	"github.com/peterldowns/pgtestdb/migrators/common"
 )
 
+// ExecuteFunc defines the signature for executing a command.
+type ExecuteFunc func(ctx context.Context, stdin io.Reader, dir, program string, args ...string) (string, error)
+
 // NewAtlasDirMigrator returns a [AtlasDirMigrator], which is a pgtestdb.Migrator that
 // uses the `atlas` CLI tool to perform migrations.
 //
@@ -18,12 +21,14 @@ func NewAtlasDirMigrator(
 	migrationsDirPath string,
 	atlasEnv string,
 	atlasConfig string,
-	execute func(ctx context.Context, stdin io.Reader, program string, args ...string) (string, error),
+	dir string,
+	execute ExecuteFunc,
 ) *AtlasDirMigrator {
 	return &AtlasDirMigrator{
 		MigrationsDirPath: migrationsDirPath,
 		AtlasEnv:          atlasEnv,
 		AtlasConfig:       atlasConfig,
+		Dir:               dir,
 		execute:           execute,
 	}
 }
@@ -42,8 +47,9 @@ type AtlasDirMigrator struct {
 	MigrationsDirPath string
 	AtlasEnv          string
 	AtlasConfig       string
+	Dir               string
 
-	execute func(ctx context.Context, stdin io.Reader, program string, args ...string) (string, error)
+	execute ExecuteFunc
 }
 
 func (m *AtlasDirMigrator) Hash() (string, error) {
@@ -59,7 +65,7 @@ func (m *AtlasDirMigrator) Migrate(
 	_ *sql.DB,
 	templateConf pgtestdb.Config,
 ) error {
-	_, err := m.execute(ctx, nil,
+	_, err := m.execute(ctx, nil, m.Dir,
 		"atlas",
 		"migrate",
 		"apply",

@@ -18,8 +18,10 @@ func TestAtlasDirMirator(t *testing.T) {
 
 	var actProgram string
 	var actArgs []string
+	var actDir string
 
-	exec := func(ctx context.Context, stdin io.Reader, program string, args ...string) (string, error) {
+	exec := func(ctx context.Context, stdin io.Reader, dir, program string, args ...string) (string, error) {
+		actDir = dir
 		actProgram = program
 		actArgs = args
 
@@ -27,7 +29,7 @@ func TestAtlasDirMirator(t *testing.T) {
 	}
 
 	dir := filepath.Join("testdata", "migrations1")
-	migrator := stdpgtest.NewAtlasDirMigrator(dir, "local", "file://atlas.hcl", exec)
+	migrator := stdpgtest.NewAtlasDirMigrator(dir, "local", "file://atlas.hcl", "..", exec)
 
 	hash, err := migrator.Hash()
 	require.NoError(t, err)
@@ -41,6 +43,7 @@ func TestAtlasDirMirator(t *testing.T) {
 		Options:  "foo=bar",
 	}))
 
+	assert.Equal(t, "..", actDir)
 	assert.Equal(t, "atlas", actProgram)
 	assert.Equal(t, []string{
 		"migrate", "apply",
