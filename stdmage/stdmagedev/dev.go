@@ -3,6 +3,9 @@ package stdmagedev
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/advdv/stdgo/stdmage"
 	"github.com/magefile/mage/sh"
@@ -26,6 +29,23 @@ func Lint() error {
 func Test() error {
 	if err := sh.Run("go", "test", "./..."); err != nil {
 		return fmt.Errorf("failed to run tests: %w", err)
+	}
+
+	return nil
+}
+
+// Coverage reports test coverage.
+func Coverage() error {
+	coverageFile := filepath.Join(os.
+		TempDir(),
+		fmt.Sprintf("coverage_%d.out", time.Now().UnixMilli()))
+
+	if err := sh.Run("go", "test", "--coverprofile", coverageFile, "./..."); err != nil {
+		return fmt.Errorf("failed to run tests with coverage: %w", err)
+	}
+
+	if err := sh.Run("go", "tool", "cover", "-html", coverageFile); err != nil {
+		return fmt.Errorf("failed to run cover tool: %w", err)
 	}
 
 	return nil
