@@ -9,21 +9,21 @@ import (
 	entdialect "entgo.io/ent/dialect"
 )
 
-// HookDriver is an Ent driver that wraps a base driver to allow a hook to
+// TxHookDriver is an Ent driver that wraps a base driver to allow a hook to
 // be configured for every transaction that is started. Useful for sql
 // settings scoped to the transaction such as the current_user_id, or the role.
-type HookDriver struct {
+type TxHookDriver struct {
 	entdialect.Driver
 	hook TxHookFunc
 }
 
 type TxHookFunc func(ctx context.Context, tx entdialect.Tx) error
 
-func NewTxHookDriver(base entdialect.Driver, hook TxHookFunc) *HookDriver {
-	return &HookDriver{Driver: base, hook: hook}
+func NewTxHookDriver(base entdialect.Driver, hook TxHookFunc) *TxHookDriver {
+	return &TxHookDriver{Driver: base, hook: hook}
 }
 
-func (d HookDriver) withHook(ctx context.Context, tx entdialect.Tx) (entdialect.Tx, error) {
+func (d TxHookDriver) withHook(ctx context.Context, tx entdialect.Tx) (entdialect.Tx, error) {
 	if err := d.hook(ctx, tx); err != nil {
 		return nil, fmt.Errorf("failed to run hook: %w", err)
 	}
@@ -32,7 +32,7 @@ func (d HookDriver) withHook(ctx context.Context, tx entdialect.Tx) (entdialect.
 }
 
 // Tx calls the base driver's method with the same symbol and invokes our hook.
-func (d HookDriver) Tx(ctx context.Context) (entdialect.Tx, error) {
+func (d TxHookDriver) Tx(ctx context.Context) (entdialect.Tx, error) {
 	tx, err := d.Driver.Tx(ctx)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (d HookDriver) Tx(ctx context.Context) (entdialect.Tx, error) {
 }
 
 // BeginTx calls the base driver's method if it's supported and calls our hook.
-func (d HookDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error) {
+func (d TxHookDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error) {
 	drv, ok := d.Driver.(interface {
 		BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error)
 	})
@@ -59,10 +59,10 @@ func (d HookDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialec
 }
 
 var (
-	_ entdialect.Driver = &HookDriver{}
+	_ entdialect.Driver = &TxHookDriver{}
 
 	// this interface may also be asserted for if users want to change transaction options.
 	_ interface {
 		BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error)
-	} = &HookDriver{}
+	} = &TxHookDriver{}
 )
