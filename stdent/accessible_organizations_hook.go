@@ -20,8 +20,10 @@ type ctxKey string
 
 // WithAccessibleOrganizations declares on the context that any calls carrying the context
 // has access to these organizations with the provided role.
-func WithAccessibleOrganizations(ctx context.Context, ors ...OrganizationRole) context.Context {
-	ctx = context.WithValue(ctx, ctxKey("accessible_organizations"), ors)
+func WithAccessibleOrganizations(
+	ctx context.Context, first OrganizationRole, more ...OrganizationRole,
+) context.Context {
+	ctx = context.WithValue(ctx, ctxKey("accessible_organizations"), append([]OrganizationRole{first}, more...))
 	return ctx
 }
 
