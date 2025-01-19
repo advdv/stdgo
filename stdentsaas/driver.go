@@ -84,7 +84,7 @@ func (d Driver) Query(_ context.Context, _ string, _, _ any) error {
 
 // Tx will begin a transaction with linearizable isolation level.
 func (d Driver) Tx(ctx context.Context) (entdialect.Tx, error) {
-	return d.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelLinearizable})
+	return d.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 }
 
 // BeginTx calls the base driver's method if it's supported and calls our hook.
@@ -96,8 +96,8 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("Driver.BeginTx is not supported")
 	}
 
-	if opts.Isolation != sql.LevelLinearizable {
-		return nil, fmt.Errorf("only linearlizable isolation level is allowed")
+	if opts.Isolation != sql.LevelSerializable {
+		return nil, fmt.Errorf("only serializable (most strict) isolation level is allowed")
 	}
 
 	tx, err := drv.BeginTx(ctx, opts)

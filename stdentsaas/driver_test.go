@@ -51,7 +51,7 @@ func TestDriverWithoutAuth(t *testing.T) {
 
 	tx1, err := wrapped.Tx(ctx)
 	require.NoError(t, err)
-	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelLinearizable}, base.calledOpts)
+	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelSerializable}, base.calledOpts)
 	require.Equal(t, []string{`SET LOCAL auth.u = '';SET LOCAL auth.o = '[]';`}, tx1.(*testTx1).sqls)
 
 	err = wrapped.Exec(ctx, "", nil, nil)
@@ -77,7 +77,7 @@ func TestDriverWithNonOptionals(t *testing.T) {
 
 	tx1, err := wrapped.Tx(ctx)
 	require.NoError(t, err)
-	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelLinearizable}, base.calledOpts)
+	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelSerializable}, base.calledOpts)
 
 	sqls := tx1.(*testTx1).sqls
 	require.Len(t, sqls, 1)
@@ -96,7 +96,7 @@ func TestNonLinearlizable(t *testing.T) {
 		stdentsaas.AnonymousUserID(""))
 
 	_, err := wrapped.BeginTx(ctx, &sql.TxOptions{})
-	require.ErrorContains(t, err, "only linearlizable")
+	require.ErrorContains(t, err, "only serializable")
 }
 
 func TestNoBeginTx(t *testing.T) {
