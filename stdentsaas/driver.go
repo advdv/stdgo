@@ -48,17 +48,27 @@ func TestForMaxQueryPlanCosts(maxCost float64) DriverOption {
 	}
 }
 
+// DiscourageSequentialScans will dis-incentivize the query planner to use sequential
+// scans for all transactions. This is mainly useful with the TestForMaxQueryPlanCost
+// option to assert that queries under testing are missing an index.
+func DiscourageSequentialScans() DriverOption {
+	return func(d *Driver) {
+		d.discourageSeqScans = true
+	}
+}
+
 // Driver is an opionated Ent driver that wraps a base driver but only allows interactions
 // with the database to be done through a transaction with specific isolation
 // properties and auth settings applied properly.
 type Driver struct {
 	entdialect.Driver
 
-	userSetting       string
-	orgsSetting       string
-	anonUserID        string
-	timeoutExtension  time.Duration
-	maxQueryPlanCosts float64
+	userSetting        string
+	orgsSetting        string
+	anonUserID         string
+	timeoutExtension   time.Duration
+	maxQueryPlanCosts  float64
+	discourageSeqScans bool
 }
 
 // NewDriver inits the driver.
@@ -151,6 +161,11 @@ func (d Driver) setupTx(ctx context.Context, tx entdialect.Tx) error {
 	if ok {
 		sql.WriteString(fmt.Sprintf(`SET LOCAL transaction_timeout = %d;`,
 			(time.Until(dl) + d.timeoutExtension).Milliseconds()))
+	}
+
+	// if we want to discourage sequential scans
+	if d.discourageSeqScans {
+		sql.WriteString(`SET LOCAL enable_seqscan = OFF`)
 	}
 
 	if err := tx.Exec(ctx, sql.String(), []any{}, nil); err != nil {

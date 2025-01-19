@@ -25,6 +25,11 @@ func TestTxWithinMaxCost(t *testing.T) {
 	currentUserID, err := entsql.ScanString(rows)
 	require.NoError(t, err)
 	require.Equal(t, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f", currentUserID)
+
+	require.NoError(t, tx.Query(ctx, `SELECT current_setting('ENABLE_SEQSCAN')`, []any{}, &rows))
+	enableSeqScan, err := entsql.ScanString(rows)
+	require.NoError(t, err)
+	require.Equal(t, "off", enableSeqScan)
 }
 
 func TestTxExceedMaxCostsQuery(t *testing.T) {
@@ -61,6 +66,7 @@ func setupTx(t *testing.T, ctx context.Context, maxCost float64) entdialect.Tx {
 
 	baseDrv := entsql.NewDriver(entdialect.Postgres, entsql.Conn{ExecQuerier: db})
 	saasDrv := stdentsaas.NewDriver(baseDrv,
+		stdentsaas.DiscourageSequentialScans(),
 		stdentsaas.TestForMaxQueryPlanCosts(maxCost),
 		stdentsaas.AuthenticatedUserSetting("auth.user_id"),
 		stdentsaas.AuthenticatedOrganizationsSetting("auth.organizations"))
