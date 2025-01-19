@@ -1,11 +1,7 @@
-package stdent
+package stdentsaas
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-
-	"entgo.io/ent/dialect"
 )
 
 // OrganizationRole describes a role in an organization. Both fields are encoded as strings
@@ -45,40 +41,40 @@ func AuthenticatedUser(ctx context.Context) (string, bool) {
 	return userID, ok
 }
 
-// NewAuthenticatedTxHook is transaction hook that sets a setting on the transaction
-// for supporting RLS policies that follow a standard multi-tenancy design outlined here:
-// https://www.flightcontrol.dev/blog/ultimate-guide-to-multi-tenant-saas-data-modeling
-func NewAuthenticatedTxHook(
-	authenticatedUserSetting string,
-	authenticatedOrganizationsSetting string,
-	anonymousUserID string,
-) TxHookFunc {
-	return func(ctx context.Context, tx dialect.Tx) error {
-		accsOrgs, ok := AuthenticatedOrganizations(ctx)
-		if !ok {
-			accsOrgs = []OrganizationRole{} // so the setting is never 'null'
-		}
+// // NewAuthenticatedTxHook is transaction hook that sets a setting on the transaction
+// // for supporting RLS policies that follow a standard multi-tenancy design outlined here:
+// // https://www.flightcontrol.dev/blog/ultimate-guide-to-multi-tenant-saas-data-modeling
+// func NewAuthenticatedTxHook(
+// 	authenticatedUserSetting string,
+// 	authenticatedOrganizationsSetting string,
+// 	anonymousUserID string,
+// ) TxHookFunc {
+// 	return func(ctx context.Context, tx dialect.Tx) error {
+// 		accsOrgs, ok := AuthenticatedOrganizations(ctx)
+// 		if !ok {
+// 			accsOrgs = []OrganizationRole{} // so the setting is never 'null'
+// 		}
 
-		jsond, err := json.Marshal(accsOrgs)
-		if err != nil {
-			return fmt.Errorf("failed to marshal authenticated_organizations json: %w", err)
-		}
+// 		jsond, err := json.Marshal(accsOrgs)
+// 		if err != nil {
+// 			return fmt.Errorf("failed to marshal authenticated_organizations json: %w", err)
+// 		}
 
-		accsUserID, ok := AuthenticatedUser(ctx)
-		if !ok {
-			accsUserID = anonymousUserID
-		}
+// 		accsUserID, ok := AuthenticatedUser(ctx)
+// 		if !ok {
+// 			accsUserID = anonymousUserID
+// 		}
 
-		if err := tx.Exec(ctx, fmt.Sprintf(`
-			SET LOCAL %s = '%s';
-			SET LOCAL %s = '%s';
-		`,
-			authenticatedUserSetting, accsUserID,
-			authenticatedOrganizationsSetting, string(jsond),
-		), []any{}, nil); err != nil {
-			return fmt.Errorf("failed to set authenticated organizations setting: %w", err)
-		}
+// 		if err := tx.Exec(ctx, fmt.Sprintf(`
+// 			SET LOCAL %s = '%s';
+// 			SET LOCAL %s = '%s';
+// 		`,
+// 			authenticatedUserSetting, accsUserID,
+// 			authenticatedOrganizationsSetting, string(jsond),
+// 		), []any{}, nil); err != nil {
+// 			return fmt.Errorf("failed to set authenticated organizations setting: %w", err)
+// 		}
 
-		return nil
-	}
-}
+// 		return nil
+// 	}
+// }
