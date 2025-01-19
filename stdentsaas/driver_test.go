@@ -6,20 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
+	entdialect "entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/advdv/stdgo/stdentsaas"
 	"github.com/stretchr/testify/require"
 )
 
-type testDriver1 struct{ dialect.Driver }
+type testDriver1 struct{ entdialect.Driver }
 
-// Tx calls the base driver's method with the same symbol and invokes our hook.
-func (d testDriver1) Tx(context.Context) (dialect.Tx, error) {
+func (d testDriver1) Tx(context.Context) (entdialect.Tx, error) {
 	return nil, nil
 }
 
 type testTx1 struct {
-	dialect.Tx
+	entdialect.Tx
 	sqls []string
 }
 
@@ -29,61 +30,67 @@ func (tx *testTx1) Exec(_ context.Context, sql string, _, _ any) error {
 }
 
 type testDriver2 struct {
-	dialect.Driver
+	entdialect.Driver
 	calledOpts *sql.TxOptions
 }
 
-func (d *testDriver2) BeginTx(_ context.Context, opts *sql.TxOptions) (dialect.Tx, error) {
+func (d *testDriver2) BeginTx(_ context.Context, opts *sql.TxOptions) (entdialect.Tx, error) {
 	d.calledOpts = opts
 
 	return &testTx1{}, nil
 }
 
-func TestDriverWithoutAuth(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	base := &testDriver2{}
-	wrapped := stdentsaas.NewDriver(base,
-		stdentsaas.AuthenticatedUserSetting("auth.u"),
-		stdentsaas.AuthenticatedOrganizationsSetting("auth.o"),
-		stdentsaas.AnonymousUserID(""),
-	)
+func readTxSettings(t *testing.T, ctx context.Context, tx entdialect.Tx) (
+	string, string, string, string,
+) {
+	t.Helper()
 
-	tx1, err := wrapped.Tx(ctx)
+	var rows entsql.Rows
+	require.NoError(t, tx.Query(ctx, `SELECT current_setting('auth.user_id')`, []any{}, &rows))
+	currentUserID, err := entsql.ScanString(rows)
 	require.NoError(t, err)
-	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelSerializable}, base.calledOpts)
-	require.Equal(t, []string{`SET LOCAL auth.u = '';SET LOCAL auth.o = '[]';`}, tx1.(*testTx1).sqls)
 
-	err = wrapped.Exec(ctx, "", nil, nil)
-	require.ErrorContains(t, err, "is not supported")
+	require.NoError(t, tx.Query(ctx, `SELECT current_setting('auth.organizations')`, []any{}, &rows))
+	currentOrgs, err := entsql.ScanString(rows)
+	require.NoError(t, err)
 
-	err = wrapped.Query(ctx, "", nil, nil)
-	require.ErrorContains(t, err, "is not supported")
+	require.NoError(t, tx.Query(ctx, `SHOW transaction_isolation`, []any{}, &rows))
+	currentIsolation, err := entsql.ScanString(rows)
+	require.NoError(t, err)
+
+	require.NoError(t, tx.Query(ctx, `SHOW transaction_timeout`, []any{}, &rows))
+	transactionTimeout, err := entsql.ScanString(rows)
+	require.NoError(t, err)
+
+	return currentUserID, currentOrgs, currentIsolation, transactionTimeout
 }
 
-func TestDriverWithNonOptionals(t *testing.T) {
+func TestDriverWithoutAuth(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	tx := setupTx(t, ctx, 0)
+	currentUserID, currentOrgs, currentIsolation, transactionTimeout := readTxSettings(t, ctx, tx)
+	require.Equal(t, "", currentUserID)
+	require.Equal(t, "[]", currentOrgs)
+	require.Equal(t, "serializable", currentIsolation)
+	require.Equal(t, "0", transactionTimeout)
+}
+
+func TestDriverWithAuth(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	base := &testDriver2{}
-	wrapped := stdentsaas.NewDriver(base,
-		stdentsaas.AuthenticatedUserSetting("auth.u"),
-		stdentsaas.AuthenticatedOrganizationsSetting("auth.o"),
-		stdentsaas.AnonymousUserID(""))
+	t.Cleanup(cancel)
 
 	ctx = stdentsaas.WithAuthenticatedOrganizations(ctx,
 		stdentsaas.OrganizationRole{OrganizationID: "1", Role: "member"},
 		stdentsaas.OrganizationRole{OrganizationID: "2", Role: "admin"})
 	ctx = stdentsaas.WithAuthenticatedUser(ctx, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f")
 
-	tx1, err := wrapped.Tx(ctx)
-	require.NoError(t, err)
-	require.Equal(t, &sql.TxOptions{Isolation: sql.LevelSerializable}, base.calledOpts)
-
-	sqls := tx1.(*testTx1).sqls
-	require.Len(t, sqls, 1)
-	require.Contains(t, sqls[0], `SET LOCAL auth.u = 'a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f';`)
-	require.Contains(t, sqls[0], `SET LOCAL auth.o = '[{`)
-	require.Contains(t, sqls[0], `SET LOCAL transaction_timeout = 299`)
+	tx := setupTx(t, ctx, 0)
+	currentUserID, currentOrgs, currentIsolation, transactionTimeout := readTxSettings(t, ctx, tx)
+	require.Equal(t, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f", currentUserID)
+	require.JSONEq(t, "[{\"organization_id\":\"1\",\"role\":\"member\"},{\"organization_id\":\"2\",\"role\":\"admin\"}]", currentOrgs)
+	require.Equal(t, "serializable", currentIsolation)
+	require.Contains(t, transactionTimeout, "ms")
 }
 
 func TestNonLinearlizable(t *testing.T) {
@@ -97,6 +104,12 @@ func TestNonLinearlizable(t *testing.T) {
 
 	_, err := wrapped.BeginTx(ctx, &sql.TxOptions{})
 	require.ErrorContains(t, err, "only serializable")
+
+	err = wrapped.Exec(ctx, "", nil, nil)
+	require.ErrorContains(t, err, "is not supported")
+
+	err = wrapped.Query(ctx, "", nil, nil)
+	require.ErrorContains(t, err, "is not supported")
 }
 
 func TestNoBeginTx(t *testing.T) {

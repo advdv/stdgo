@@ -38,16 +38,27 @@ func AnonymousUserID(s string) DriverOption {
 	}
 }
 
+// TestForMaxQueryPlanCosts will enable EXPLAIN on every query that is executed with
+// the driver and fail when the cost of the resulting query is above the maximum. Together
+// with the enable_seqscan=OFF it can help test of infefficient queries do to missing
+// indexes.
+func TestForMaxQueryPlanCosts(maxCost float64) DriverOption {
+	return func(d *Driver) {
+		d.maxQueryPlanCosts = maxCost
+	}
+}
+
 // Driver is an opionated Ent driver that wraps a base driver but only allows interactions
 // with the database to be done through a transaction with specific isolation
 // properties and auth settings applied properly.
 type Driver struct {
 	entdialect.Driver
 
-	userSetting      string
-	orgsSetting      string
-	anonUserID       string
-	timeoutExtension time.Duration
+	userSetting       string
+	orgsSetting       string
+	anonUserID        string
+	timeoutExtension  time.Duration
+	maxQueryPlanCosts float64
 }
 
 // NewDriver inits the driver.
@@ -110,7 +121,7 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("failed to setup tx, rolled back: %w", err)
 	}
 
-	return tx, nil
+	return Tx{tx, d.maxQueryPlanCosts}, nil
 }
 
 // setupTx preforms shared transaction setup.
