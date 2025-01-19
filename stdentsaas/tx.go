@@ -71,7 +71,8 @@ func (tx Tx) do(
 
 	for _, plan := range expl {
 		if plan.Plan.TotalCost > tx.MaxQueryPlanCosts {
-			return fmt.Errorf("query plan cost exceeds maximum %v > %v", plan.Plan.TotalCost, tx.MaxQueryPlanCosts)
+			return fmt.Errorf("query plan cost exceeds maximum %v > %v, query: %s",
+				plan.Plan.TotalCost, tx.MaxQueryPlanCosts, query)
 		}
 	}
 
