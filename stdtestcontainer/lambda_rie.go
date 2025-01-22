@@ -3,6 +3,7 @@ package stdtestcontainer
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,7 @@ func SetupLambdaRIEContainer(
 	env map[string]string, // e.g: map[string]string{ "AWS_REGION":  "eu-central-1", "AWS_PROFILE": "cl-ats" }
 	hostRieFilePath string, // default: filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"))
 	hostAWSCredentialsFilePath string, // default: filepath.Abs( filepath.Join(hdir, ".aws", "credentials")))
+	buildLogWriter io.Writer,
 ) *requests.Builder {
 	t.Helper()
 
@@ -68,7 +70,7 @@ func SetupLambdaRIEContainer(
 			FromDockerfile: testcontainers.FromDockerfile{
 				Context:        wdir,
 				Dockerfile:     dockerFilePath,
-				BuildLogWriter: os.Stderr,
+				BuildLogWriter: buildLogWriter,
 				BuildOptionsModifier: func(ibo *types.ImageBuildOptions) {
 					ibo.Platform = platform
 					ibo.Target = buildTarget

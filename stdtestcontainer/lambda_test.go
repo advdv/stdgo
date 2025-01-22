@@ -2,6 +2,7 @@ package stdtestcontainer_test
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,7 +50,7 @@ func TestLambdaRIEContainer(t *testing.T) {
 		"mytarget",
 		[]string{"/bar"},
 		"linux/amd64",
-		map[string]string{"FOO": "BAR"}, "", "")
+		map[string]string{"FOO": "BAR"}, "", "", io.Discard)
 
 	require.True(t, calledCreate)
 	require.True(t, calledCleanup)
