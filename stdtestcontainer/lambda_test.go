@@ -2,7 +2,6 @@ package stdtestcontainer_test
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,15 +21,13 @@ func TestLambdaRIEContainer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wdir, _ := os.Getwd()
 	hdir, _ := os.UserHomeDir()
 
 	var calledCreate, calledCleanup bool
 	stdtestcontainer.CreateGenericContainer = func(ctx context.Context, req testcontainers.GenericContainerRequest) (testcontainers.Container, error) {
 		calledCreate = true
 
-		require.Contains(t, wdir, req.FromDockerfile.Context)
-		require.Equal(t, "foo/bar/Dockerfile", req.FromDockerfile.Dockerfile)
+		require.Equal(t, "myimage", req.Image)
 		require.Equal(t, "linux/amd64", req.ImagePlatform)
 		require.Len(t, req.Files, 2)
 		require.Equal(t, filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"), req.Files[0].HostFilePath)
@@ -46,11 +43,10 @@ func TestLambdaRIEContainer(t *testing.T) {
 	}
 
 	req := stdtestcontainer.SetupLambdaRIEContainer(t, ctx,
-		"foo/bar/Dockerfile",
-		"mytarget",
+		"myimage",
 		[]string{"/bar"},
 		"linux/amd64",
-		map[string]string{"FOO": "BAR"}, "", "", io.Discard)
+		map[string]string{"FOO": "BAR"}, "", "")
 
 	require.True(t, calledCreate)
 	require.True(t, calledCleanup)

@@ -3,14 +3,12 @@ package stdtestcontainer
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/carlmjohnson/requests"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -43,26 +41,27 @@ func (lc *testLogger) Write(p []byte) (n int, err error) {
 func SetupLambdaRIEContainer(
 	t *testing.T,
 	ctx context.Context,
-	dockerFilePath string, // e.g: filepath.Join("lambda", "describedocument", "Dockerfile")
-	buildTarget string, // e.g: describedocument
+	imageName string,
 	entrypoint []string, // e.g: []string{"/describedocument"}
 	platform string, // e.g: linux/amd64
 	env map[string]string, // e.g: map[string]string{ "AWS_REGION":  "eu-central-1", "AWS_PROFILE": "cl-ats" }
 	hostRieFilePath string, // default: filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"))
 	hostAWSCredentialsFilePath string, // default: filepath.Abs( filepath.Join(hdir, ".aws", "credentials")))
-	buildLogWriter io.Writer,
 ) *requests.Builder {
 	t.Helper()
 
-	wdir, err := os.Getwd()
-	require.NoError(t, err)
 	hdir, err := os.UserHomeDir()
 	require.NoError(t, err)
 
 	logConsumer := &testLogger{t}
 
 	if hostRieFilePath == "" {
-		hostRieFilePath, err = filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"))
+		binaryName := "aws-lambda-rie-arm64"
+		if platform == "linux/amd64" {
+			binaryName = "aws-lambda-rie-amd64"
+		}
+
+		hostRieFilePath, err = filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", binaryName))
 		require.NoError(t, err)
 	}
 
@@ -71,21 +70,9 @@ func SetupLambdaRIEContainer(
 		require.NoError(t, err)
 	}
 
-	if buildLogWriter == nil {
-		buildLogWriter = logConsumer
-	}
-
 	container, err := CreateGenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			FromDockerfile: testcontainers.FromDockerfile{
-				Context:        wdir,
-				Dockerfile:     dockerFilePath,
-				BuildLogWriter: buildLogWriter,
-				BuildOptionsModifier: func(ibo *types.ImageBuildOptions) {
-					ibo.Platform = platform
-					ibo.Target = buildTarget
-				},
-			},
+			Image:         imageName,
 			ImagePlatform: platform,
 			ExposedPorts:  []string{"8080/tcp"},
 			Files: []testcontainers.ContainerFile{
