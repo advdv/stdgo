@@ -51,7 +51,7 @@ func SetupLambdaRIEContainer(
 	hdir, err := os.UserHomeDir()
 	require.NoError(t, err)
 
-	logConsumer := &testLogConsumer{}
+	logConsumer := &testLogConsumer{t}
 
 	if hostRieFilePath == "" {
 		hostRieFilePath, err = filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"))
