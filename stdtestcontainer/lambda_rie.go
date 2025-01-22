@@ -24,11 +24,17 @@ var (
 	CleanupContainer = testcontainers.CleanupContainer
 )
 
-// testLogConsumer will log container logs to the test logs.
-type testLogConsumer struct{ testing.TB }
+// testLogger will log container logs to the test logs.
+type testLogger struct{ testing.TB }
 
-func (lc *testLogConsumer) Accept(l testcontainers.Log) {
+func (lc *testLogger) Accept(l testcontainers.Log) {
 	lc.Logf("%s: %s", l.LogType, l.Content)
+}
+
+func (lc *testLogger) Write(p []byte) (n int, err error) {
+	lc.Logf("%s", string(p))
+
+	return
 }
 
 // SetupLambdaRIEContainer will use testcontainers-go to setup a container for e2e testing of a lambda handler.
@@ -53,7 +59,7 @@ func SetupLambdaRIEContainer(
 	hdir, err := os.UserHomeDir()
 	require.NoError(t, err)
 
-	logConsumer := &testLogConsumer{t}
+	logConsumer := &testLogger{t}
 
 	if hostRieFilePath == "" {
 		hostRieFilePath, err = filepath.Abs(filepath.Join(hdir, ".aws-lambda-rie", "aws-lambda-rie-amd64"))
@@ -63,6 +69,10 @@ func SetupLambdaRIEContainer(
 	if hostAWSCredentialsFilePath == "" {
 		hostAWSCredentialsFilePath, err = filepath.Abs(filepath.Join(hdir, ".aws", "credentials"))
 		require.NoError(t, err)
+	}
+
+	if buildLogWriter == nil {
+		buildLogWriter = logConsumer
 	}
 
 	container, err := CreateGenericContainer(ctx, testcontainers.GenericContainerRequest{
