@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-secretsmanager-caching-go/v2/secretcache"
 	"go.uber.org/fx"
@@ -20,7 +21,6 @@ type SecretIDer interface {
 // struct that implements the interface.
 type JSONSecretParams[IDR SecretIDer] struct {
 	fx.In
-	fx.Lifecycle
 	Config IDR
 	Cache  *secretcache.Cache
 }
@@ -35,9 +35,13 @@ type JSONSecret[S any] struct {
 // NewJSONSecret inits the main component in this module.
 func NewJSONSecret[S any, IDR SecretIDer](p JSONSecretParams[IDR]) (secr *JSONSecret[S], err error) {
 	secr = &JSONSecret[S]{cache: p.Cache, secretID: p.Config.AWSSecretID()}
-	p.Lifecycle.Append(fx.Hook{OnStart: secr.Start})
 
-	return secr, nil
+	// we don't run this as a lifecycle hook so constructors can assume that the secret is
+	// already loaded. This is useful since constructors often use the secret values to build components.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	return secr, secr.readSecret(ctx)
 }
 
 // Static returns a pointer to the static value of the secret as read on startup.
@@ -45,8 +49,8 @@ func (s *JSONSecret[S]) Static() *S {
 	return &s.value
 }
 
-// Start will read the value of the secret on startup.
-func (s *JSONSecret[S]) Start(ctx context.Context) error {
+// readSecret will read the value of the secret on startup.
+func (s *JSONSecret[S]) readSecret(ctx context.Context) error {
 	str, err := s.cache.GetSecretStringWithContext(ctx, s.secretID)
 	if err != nil {
 		return fmt.Errorf("failed to get secret string: %w", err)
