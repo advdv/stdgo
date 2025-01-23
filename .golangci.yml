@@ -56,6 +56,7 @@ linters:
     - mnd # just too annoying
     - wrapcheck
     - exportloopref # deprecated
+    - thelper # not usefull it seems
 
 issues:
   include:

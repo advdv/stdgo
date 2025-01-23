@@ -1,0 +1,11 @@
+with-expecter: true
+filename: "mock_{{.InterfaceNameLower}}.go"
+dir: "{{.InterfaceDir}}/{{.PackageName}}mock"
+mockname: "Mock{{.InterfaceName}}"
+outpkg: "{{.PackageName}}mock"
+resolve-type-alias: false
+issue-845-fix: True
+packages:
+  github.com/advdv/stdgo/stdlambda:
+    interfaces:
+      Lambda: {}
