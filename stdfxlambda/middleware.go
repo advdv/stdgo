@@ -4,21 +4,16 @@ import (
 	"context"
 
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdlambda"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"go.uber.org/zap"
 )
 
-type handlerFunc func(ctx context.Context, payload []byte) ([]byte, error)
-
-func (f handlerFunc) Invoke(ctx context.Context, payload []byte) ([]byte, error) {
-	return f(ctx, payload)
-}
-
 // WithLogger decorates the context with a zap handler that logs each with the request id and other lambda
 // information.
 func WithLogger(next lambda.Handler, logs *zap.Logger) lambda.Handler {
-	return handlerFunc(func(ctx context.Context, payload []byte) ([]byte, error) {
+	return stdlambda.HandlerFunc(func(ctx context.Context, payload []byte) ([]byte, error) {
 		lctx, ok := lambdacontext.FromContext(ctx)
 		if !ok {
 			panic("stdfxlambda: no lambda context available")
@@ -33,7 +28,3 @@ func WithLogger(next lambda.Handler, logs *zap.Logger) lambda.Handler {
 		return next.Invoke(ctx, payload)
 	})
 }
-
-// @TODO create a db.Tx transaction middleware (or pgx.Tx):
-// - Allow setting the isolation level to serializable (for certain constraints to work)
-// - Set the timeout of the transaction to the timeout of the lambda (or a little bit less)
