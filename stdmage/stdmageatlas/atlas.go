@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/advdv/stdgo/stdlo"
+	"github.com/advdv/stdgo/stdmage"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/jackc/pgx/v5"
@@ -21,6 +22,7 @@ var (
 	localEnv      = "local"
 	migrationsDir = "migrations"
 	patchHook     PatchFunc
+	devEnv        = "dev"
 )
 
 // PatchFunc allows users of the mage targets to patch any migration that is generated.
@@ -43,6 +45,7 @@ func Init(
 	snapshotRelDir string,
 	snapshotTargetContainerName string,
 	snapshotTargetConnStr string,
+	dotEnvDevEnv string,
 	hook PatchFunc,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
 ) {
@@ -50,6 +53,7 @@ func Init(
 	localEnv = atlasLocalEnv
 	migrationsDir = atlasMigrationsDir
 	patchHook = hook
+	devEnv = dotEnvDevEnv
 
 	snapshotTargetContainer = snapshotTargetContainerName
 	snapshotTarget, _ = pgx.ParseConfig(snapshotTargetConnStr)
@@ -58,6 +62,10 @@ func Init(
 
 // Inspect visualizes the schema.
 func Inspect() error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return err
+	}
+
 	return sh.Run("atlas", "schema", "inspect",
 		"--env", inspectEnv,
 		"-w",
@@ -66,12 +74,20 @@ func Inspect() error {
 
 // Hash runs the logic for re-hashing the Atlas sum file.
 func Hash() error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return err
+	}
+
 	return sh.Run("atlas", "migrate", "hash",
 		"--env", localEnv)
 }
 
 // Diff generates a named migration for the local environment.
 func Diff(name string) error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return err
+	}
+
 	return sh.Run("atlas", "migrate", "diff", name,
 		"--env", localEnv,
 	)
@@ -79,6 +95,10 @@ func Diff(name string) error {
 
 // Apply applies the migrations for the provided Atlas environment.
 func Apply(env string) error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return err
+	}
+
 	return sh.Run("atlas", "migrate", "apply",
 		"--env", env)
 }
