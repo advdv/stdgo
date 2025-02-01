@@ -62,10 +62,6 @@ func Init(
 
 // Inspect visualizes the schema.
 func Inspect() error {
-	if err := stdmage.LoadEnv(devEnv); err != nil {
-		return err
-	}
-
 	return sh.Run("atlas", "schema", "inspect",
 		"--env", inspectEnv,
 		"-w",
@@ -95,7 +91,7 @@ func Diff(name string) error {
 
 // Apply applies the migrations for the provided Atlas environment.
 func Apply(env string) error {
-	if err := stdmage.LoadEnv(devEnv); err != nil {
+	if err := stdmage.LoadEnv(env); err != nil {
 		return err
 	}
 
