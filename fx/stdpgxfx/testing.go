@@ -17,6 +17,7 @@ type testingPoolConfigParams struct {
 	Cfg      Config
 	Logs     *zap.Logger
 	Migrater pgtestdb.Migrator `optional:"true"`
+	TestRole *pgtestdb.Role    `optional:"true"`
 }
 
 // testingPoolConfigProvider is a provider factory that can optionally create an isolated and migrated testing
@@ -31,7 +32,7 @@ func testingPoolConfigProvider(
 		if p.Migrater != nil {
 			p.Logs.Info("non-nill migrater, creating migrated test database")
 
-			testCfg = stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, nil)
+			testCfg = stdpgtest.NewPgxTestDB(tb, p.Migrater, p.Cfg.RWDatabaseURL, p.TestRole)
 			p.Cfg.RWDatabaseURL = testCfg.URL()
 		}
 
