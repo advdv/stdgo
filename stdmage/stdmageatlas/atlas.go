@@ -19,7 +19,6 @@ import (
 
 var (
 	inspectEnv    = "inspect"
-	localEnv      = "local"
 	migrationsDir = "migrations"
 	patchHook     PatchFunc
 	devEnv        = "dev"
@@ -39,21 +38,20 @@ var (
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
 func Init(
+	localDevEnv string,
 	atlasInspectEnv,
-	atlasLocalEnv,
 	atlasMigrationsDir string,
 	snapshotRelDir string,
 	snapshotTargetContainerName string,
 	snapshotTargetConnStr string,
-	dotEnvDevEnv string,
 	hook PatchFunc,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
 ) {
 	inspectEnv = atlasInspectEnv
-	localEnv = atlasLocalEnv
+
 	migrationsDir = atlasMigrationsDir
 	patchHook = hook
-	devEnv = dotEnvDevEnv
+	devEnv = localDevEnv
 
 	snapshotTargetContainer = snapshotTargetContainerName
 	snapshotTarget, _ = pgx.ParseConfig(snapshotTargetConnStr)
@@ -75,7 +73,7 @@ func Hash() error {
 	}
 
 	return sh.Run("atlas", "migrate", "hash",
-		"--env", localEnv)
+		"--env", devEnv)
 }
 
 // Diff generates a named migration for the local environment.
@@ -85,7 +83,7 @@ func Diff(name string) error {
 	}
 
 	return sh.Run("atlas", "migrate", "diff", name,
-		"--env", localEnv,
+		"--env", devEnv,
 	)
 }
 
@@ -108,7 +106,7 @@ func Snapshot() error {
 
 	// wait until the newly started container is migrated
 	if _, err := failsafe.Get(func() (bool, error) {
-		if err := Apply(localEnv); err != nil {
+		if err := Apply(devEnv); err != nil {
 			return false, fmt.Errorf("failed to migrated database: %w", err)
 		}
 
