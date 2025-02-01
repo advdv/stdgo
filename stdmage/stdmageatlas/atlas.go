@@ -28,8 +28,8 @@ var (
 type PatchFunc = func(latestName, latestFilename string) error
 
 var (
-	// targeting the host and container for snapshotting.
-	snapshotTarget *pgx.ConnConfig
+	// name of the environment variable that holds the connection string for snapshotting.
+	snapshotTargetEnv = "DATABASE_URL"
 	// name of the container that is restarted for the snapshot.
 	snapshotTargetContainer string
 	// directory where the snapshot is stored in.
@@ -43,7 +43,7 @@ func Init(
 	atlasMigrationsDir string,
 	snapshotRelDir string,
 	snapshotTargetContainerName string,
-	snapshotTargetConnStr string,
+	snapshotTargetConnStrEnvName string,
 	hook PatchFunc,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
 ) {
@@ -54,8 +54,8 @@ func Init(
 	devEnv = localDevEnv
 
 	snapshotTargetContainer = snapshotTargetContainerName
-	snapshotTarget, _ = pgx.ParseConfig(snapshotTargetConnStr)
 	snapshotDir = snapshotRelDir
+	snapshotTargetEnv = snapshotTargetConnStrEnvName
 }
 
 // Inspect visualizes the schema.
@@ -99,6 +99,16 @@ func Apply(env string) error {
 
 // Snapshot dumps the migrated schema to an sql file using pg_dump.
 func Snapshot() error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return err
+	}
+
+	// parse cfg from the environment variable in the development environment.
+	snapshotTarget, err := pgx.ParseConfig(os.Getenv(snapshotTargetEnv))
+	if err != nil {
+		return fmt.Errorf("failed to parse environment variable for database url: %w", err)
+	}
+
 	// restart the container postgres container, expecting it to be empheral
 	if err := sh.Run(`docker`, `compose`, `restart`, snapshotTargetContainer); err != nil {
 		return fmt.Errorf("failed to restart postgres to clean it: %w", err)
