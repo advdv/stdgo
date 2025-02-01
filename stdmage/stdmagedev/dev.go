@@ -11,8 +11,12 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
+var devEnv = "dev"
+
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
-func Init(...[]string) {
+func Init(dotEnvDevEnv string, _ ...[]string) {
+	devEnv = dotEnvDevEnv
+
 	stdmage.MustBeInRootIfNotTest()
 }
 
@@ -62,7 +66,7 @@ func Generate() error {
 
 // Serve the code locally.
 func Serve() error {
-	if err := stdmage.LoadEnv("dev"); err != nil {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
 		return fmt.Errorf("failed to load development env: %w", err)
 	}
 

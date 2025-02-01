@@ -24,12 +24,14 @@ import (
 var (
 	migrationsDir = "not_initialized"
 	urlEnv        = "DATABASE_URL"
+	devEnv        = "dev"
 )
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
-func Init(dir string, databaseURLEnvVarName string, _ ...[]string) {
+func Init(dir, dotEnvDevEnv, databaseURLEnvVarName string, _ ...[]string) {
 	migrationsDir = dir
 	urlEnv = databaseURLEnvVarName
+	devEnv = dotEnvDevEnv
 
 	if _, err := os.Stat(migrationsDir); err != nil {
 		panic("failed to stat migrations dir '" + migrationsDir + "', make sure it exists")
@@ -60,7 +62,7 @@ func Up(ctx context.Context, env string) error {
 
 // Snapshot a cleanly migrated database into a sql file.
 func Snapshot(ctx context.Context) error {
-	if err := stdmage.LoadEnv("dev"); err != nil {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
 		return fmt.Errorf("failed to load env: %w", err)
 	}
 
@@ -70,7 +72,7 @@ func Snapshot(ctx context.Context) error {
 	}
 
 	if _, err := failsafe.Get(func() (bool, error) {
-		if err := Up(ctx, "dev"); err != nil {
+		if err := Up(ctx, devEnv); err != nil {
 			return false, fmt.Errorf("failed to migrated database: %w", err)
 		}
 

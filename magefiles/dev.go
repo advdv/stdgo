@@ -16,7 +16,7 @@ import (
 )
 
 func init() {
-	stdmagedev.Init()
+	stdmagedev.Init("dev")
 }
 
 // Dev extends the dev namespace.
