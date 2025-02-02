@@ -71,7 +71,7 @@ func NewPgtestdbTestMigrator(params PgtestdbTestMigratorParams) TestMigrator {
 			TestRole:   params.Role,
 		}, params.Migrator)
 
-		// now that we have a database instance (created from the temlate). We return
+		// now that we have a database instance (created from the template). We return
 		// a copy of the pool config such that it will connect to the instance instead.
 		pcfg = pcfg.Copy()
 		pcfg.ConnConfig.Database = tcfg.Database
