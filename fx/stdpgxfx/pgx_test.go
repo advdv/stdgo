@@ -130,46 +130,54 @@ func TestPgxTestProvideWithDerived(t *testing.T) {
 	require.True(t, derivedHookCalled)
 }
 
-func TestPgxTestProvideWithMigrater(t *testing.T) {
+func TestPgxTestProvideWithMigrator(t *testing.T) {
 	ctx := setup(t)
-	var rw *pgxpool.Pool
 
-	newMigrater := func() pgtestdb.Migrator {
-		return goosemigrator.New(filepath.Join("testdata", "migrations1"))
+	var res struct {
+		fx.In
+		Web *pgxpool.Pool
+		Sys *pgxpool.Pool `name:"sys"`
 	}
 
+	var sysDerivedUser string
+	var sysDerivedPassword string
+
 	app := fxtest.New(t,
-		fx.Populate(&rw),
-		fx.Provide(newMigrater),
+		fx.Populate(&res),
+
+		// provide the pgtesdb migrator.
+		fx.Provide(func() pgtestdb.Migrator {
+			return goosemigrator.New(filepath.Join("testdata", "migrations1"))
+		}),
+		// provide the mimplementation of our test migrator
+		fx.Provide(stdpgxfx.NewPgtestdbTestMigrator),
+
+		// imagine an after migration user, such that the deriver can see it.
+		fx.Supply(&stdpgxfx.AfterMigrateRole{
+			User:     "postgres",
+			Password: "postgres",
+		}),
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
-		stdpgxfx.TestProvide(t))
-	app.RequireStart()
-	t.Cleanup(app.RequireStop)
+		stdpgxfx.TestProvide(t, "sys"),
 
-	require.NotNil(t, rw)
-
-	rows, err := rw.Query(ctx, `SELECT * FROM foo;`)
-	require.NoError(t, err)
-	rows.Close()
-}
-
-func TestPgxTestProvideWithSnapshotMigrater(t *testing.T) {
-	ctx := setup(t)
-	var rw *pgxpool.Pool
-	app := fxtest.New(t,
-		fx.Populate(&rw),
-		stdzapfx.Fx(),
-		stdzapfx.TestProvide(t),
-		stdpgxfx.TestProvide(t),
-		stdpgxfx.SnapshotProvide("testdata/snapshot1.sql"),
+		// test how a deriver can even further customize the user/password after migration.
+		stdpgxfx.ProvideDeriver("sys", func(base *pgxpool.Config) *pgxpool.Config {
+			sysDerivedUser = base.ConnConfig.User
+			sysDerivedPassword = base.ConnConfig.Password
+			return base
+		}),
 	)
 
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
 
-	rows, err := rw.Query(ctx, `SELECT * FROM foo;`)
+	require.NotNil(t, res.Web)
+	require.Equal(t, "postgres", sysDerivedUser)
+	require.Equal(t, "postgres", sysDerivedPassword)
+
+	rows, err := res.Web.Query(ctx, `SELECT * FROM foo;`)
 	require.NoError(t, err)
 	rows.Close()
 }
