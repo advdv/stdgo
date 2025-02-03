@@ -32,20 +32,10 @@ func (f TestMigratorFunc) Migrate(
 	return f(tb, cfg, pcfg)
 }
 
-// AfterMigrateRole can be optionally provided to further customize the role
-// used to connect to the database that was just migrated. This is useful if
-// the eventual role being used from the application is different from the
-// migration (superuser) role and the testrole.
-type AfterMigrateRole struct {
-	User     string
-	Password string
-}
-
 type PgtestdbTestMigratorParams struct {
 	fx.In
-	Migrator  pgtestdb.Migrator
-	Role      *pgtestdb.Role    `optional:"true"`
-	AfterRole *AfterMigrateRole `optional:"true"`
+	Migrator pgtestdb.Migrator
+	Role     *pgtestdb.Role `optional:"true"`
 }
 
 // NewPgtestdbTestMigrator implements the [TestMigrator] using the pgtestdb library.
@@ -77,13 +67,6 @@ func NewPgtestdbTestMigrator(params PgtestdbTestMigratorParams) TestMigrator {
 		pcfg.ConnConfig.Database = tcfg.Database
 		pcfg.ConnConfig.User = tcfg.User
 		pcfg.ConnConfig.Password = tcfg.Password
-
-		// in some cases it can be useful to connect even with another role to the database
-		// instance that was just initialized.
-		if params.AfterRole != nil {
-			pcfg.ConnConfig.User = params.AfterRole.User
-			pcfg.ConnConfig.Password = params.AfterRole.Password
-		}
 
 		return pcfg, nil
 	})

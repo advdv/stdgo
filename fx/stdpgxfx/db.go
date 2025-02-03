@@ -15,8 +15,8 @@ import (
 
 // Config configures the module.
 type Config struct {
-	// RWDatabaseURL configures the database connection string for the read-write connection.
-	RWDatabaseURL string `env:"RW_DATABASE_URL"`
+	// MainDatabaseURL configures the database connection string for the main connection.
+	MainDatabaseURL string `env:"MAIN_DATABASE_URL,required"`
 }
 
 type (
@@ -36,7 +36,7 @@ type (
 // New is the main constructor. In this package it only provides the pool configuration
 // used through out the package.
 func New(p Params) (r Result, err error) {
-	pcfg, err := pgxpool.ParseConfig(p.Config.RWDatabaseURL)
+	pcfg, err := pgxpool.ParseConfig(p.Config.MainDatabaseURL)
 	if err != nil {
 		return r, fmt.Errorf("failed to parse connecting string: %w", err)
 	}
