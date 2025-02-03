@@ -15,10 +15,10 @@ func Test[T stdent.Tx](
 	ctx context.Context,
 	tb testing.TB,
 	txr *stdent.Transactor[T],
-	fnc func(ctx context.Context, tb testing.TB, tx T),
+	fnc func(ctx context.Context, tx T),
 ) {
-	if err := stdent.Transact0[T](ctx, txr, func(ctx context.Context, tx T) error {
-		fnc(ctx, tb, tx)
+	if err := stdent.Transact0(ctx, txr, func(ctx context.Context, tx T) error {
+		fnc(ctx, tx)
 		return nil
 	}); err != nil && !errors.Is(err, pgx.ErrTxCommitRollback) {
 		// in case we're testing errors the commit is reached but it will fail with an expected error of
