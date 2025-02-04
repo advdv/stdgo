@@ -48,8 +48,21 @@ func TestTxExceedMaxCostsExec(t *testing.T) {
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
-	err := tx.Exec(ctx, `SELECT 42`, []any{}, &rows)
+	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
 	require.ErrorContains(t, err, "plan cost exceeds maximum")
+}
+
+func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	tx := setupTx(t, ctx, 0.00001)
+
+	ctx = stdentsaas.WithNoTestForMaxQueryPlanCosts(ctx)
+
+	var rows entsql.Rows
+	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
+	require.NoError(t, err)
+	require.NoError(t, rows.Close())
 }
 
 func setupTx(t *testing.T, ctx context.Context, maxCost float64) entdialect.Tx {

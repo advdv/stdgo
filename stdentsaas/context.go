@@ -41,40 +41,17 @@ func AuthenticatedUser(ctx context.Context) (string, bool) {
 	return userID, ok
 }
 
-// // NewAuthenticatedTxHook is transaction hook that sets a setting on the transaction
-// // for supporting RLS policies that follow a standard multi-tenancy design outlined here:
-// // https://www.flightcontrol.dev/blog/ultimate-guide-to-multi-tenant-saas-data-modeling
-// func NewAuthenticatedTxHook(
-// 	authenticatedUserSetting string,
-// 	authenticatedOrganizationsSetting string,
-// 	anonymousUserID string,
-// ) TxHookFunc {
-// 	return func(ctx context.Context, tx dialect.Tx) error {
-// 		accsOrgs, ok := AuthenticatedOrganizations(ctx)
-// 		if !ok {
-// 			accsOrgs = []OrganizationRole{} // so the setting is never 'null'
-// 		}
+// WithNoTestForMaxQueryPlanCosts allow disabling the plan cost check.
+func WithNoTestForMaxQueryPlanCosts(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKey("no_test_for_max_query_plan_costs"), true)
+}
 
-// 		jsond, err := json.Marshal(accsOrgs)
-// 		if err != nil {
-// 			return fmt.Errorf("failed to marshal authenticated_organizations json: %w", err)
-// 		}
+// NoTestForMaxQueryPlanCosts returns whether the cost check is disabled.
+func NoTestForMaxQueryPlanCosts(ctx context.Context) bool {
+	v, ok := ctx.Value(ctxKey("no_test_for_max_query_plan_costs")).(bool)
+	if !ok {
+		return false
+	}
 
-// 		accsUserID, ok := AuthenticatedUser(ctx)
-// 		if !ok {
-// 			accsUserID = anonymousUserID
-// 		}
-
-// 		if err := tx.Exec(ctx, fmt.Sprintf(`
-// 			SET LOCAL %s = '%s';
-// 			SET LOCAL %s = '%s';
-// 		`,
-// 			authenticatedUserSetting, accsUserID,
-// 			authenticatedOrganizationsSetting, string(jsond),
-// 		), []any{}, nil); err != nil {
-// 			return fmt.Errorf("failed to set authenticated organizations setting: %w", err)
-// 		}
-
-// 		return nil
-// 	}
-// }
+	return v
+}

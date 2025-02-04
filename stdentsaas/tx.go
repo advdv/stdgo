@@ -33,7 +33,7 @@ func (tx Tx) do(
 	ctx context.Context, query string, args, val any,
 	dof func(ctx context.Context, query string, args, v any) error,
 ) error {
-	if tx.MaxQueryPlanCosts <= 0 {
+	if tx.MaxQueryPlanCosts <= 0 || NoTestForMaxQueryPlanCosts(ctx) {
 		return dof(ctx, query, args, val) // just execute
 	}
 
