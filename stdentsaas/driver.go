@@ -10,6 +10,7 @@ import (
 	"time"
 
 	entdialect "entgo.io/ent/dialect"
+	"go.uber.org/zap/zapcore"
 )
 
 type DriverOption func(*Driver)
@@ -57,6 +58,13 @@ func DiscourageSequentialScans() DriverOption {
 	}
 }
 
+// LoggingLevel configures the level at which transaction logs are send to the logger.
+func LoggingLevel(v zapcore.Level) DriverOption {
+	return func(d *Driver) {
+		d.logLevel = v
+	}
+}
+
 // Driver is an opionated Ent driver that wraps a base driver but only allows interactions
 // with the database to be done through a transaction with specific isolation
 // properties and auth settings applied properly.
@@ -69,6 +77,7 @@ type Driver struct {
 	timeoutExtension   time.Duration
 	maxQueryPlanCosts  float64
 	discourageSeqScans bool
+	logLevel           zapcore.Level
 }
 
 // NewDriver inits the driver.
@@ -131,7 +140,7 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("failed to setup tx, rolled back: %w", err)
 	}
 
-	return Tx{tx, d.maxQueryPlanCosts}, nil
+	return Tx{tx, d.maxQueryPlanCosts, d.logLevel}, nil
 }
 
 // setupTx preforms shared transaction setup.
