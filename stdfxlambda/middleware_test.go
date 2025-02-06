@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdfxlambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +15,7 @@ import (
 type mockHandler struct{}
 
 func (m *mockHandler) Invoke(ctx context.Context, payload []byte) ([]byte, error) {
-	stdzapfx.Log(ctx).Info("some info")
+	stdctx.Log(ctx).Info("some info")
 
 	return []byte("0x01"), nil
 }

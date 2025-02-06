@@ -7,6 +7,8 @@ import (
 
 	entdialect "entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/advdv/stdgo/stdctx"
+	"go.uber.org/zap"
 )
 
 // Tx wraps a Ent transaction to provide us with the ability to hook any sql
@@ -20,12 +22,16 @@ type Tx struct {
 // Exec executes a query that does not return records. For example, in SQL, INSERT or UPDATE.
 // It scans the result into the pointer v. For SQL drivers, it is dialect/sql.Result.
 func (tx Tx) Exec(ctx context.Context, query string, args, v any) error {
+	stdctx.Log(ctx).Debug("exec", zap.String("sql", query), zap.Any("args", args))
+
 	return tx.do(ctx, query, args, v, tx.Tx.Exec)
 }
 
 // Query executes a query that returns rows, typically a SELECT in SQL.
 // It scans the result into the pointer v. For SQL drivers, it is *dialect/sql.Rows.
 func (tx Tx) Query(ctx context.Context, query string, args, v any) error {
+	stdctx.Log(ctx).Debug("query", zap.String("sql", query), zap.Any("args", args))
+
 	return tx.do(ctx, query, args, v, tx.Tx.Query)
 }
 

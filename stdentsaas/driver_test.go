@@ -66,8 +66,7 @@ func readTxSettings(t *testing.T, ctx context.Context, tx entdialect.Tx) (
 }
 
 func TestDriverWithoutAuth(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := setup(t)
 	tx := setupTx(t, ctx, 0)
 	currentUserID, currentOrgs, currentIsolation, transactionTimeout := readTxSettings(t, ctx, tx)
 	require.Equal(t, "", currentUserID)
@@ -77,8 +76,7 @@ func TestDriverWithoutAuth(t *testing.T) {
 }
 
 func TestDriverWithAuth(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	t.Cleanup(cancel)
+	ctx := setup(t, time.Second*10)
 
 	ctx = stdentsaas.WithAuthenticatedOrganizations(ctx,
 		stdentsaas.OrganizationRole{OrganizationID: "1", Role: "member"},
@@ -94,8 +92,7 @@ func TestDriverWithAuth(t *testing.T) {
 }
 
 func TestNonLinearlizable(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := setup(t)
 	base := &testDriver2{}
 	wrapped := stdentsaas.NewDriver(base,
 		stdentsaas.AuthenticatedUserSetting("auth.u"),
@@ -113,8 +110,7 @@ func TestNonLinearlizable(t *testing.T) {
 }
 
 func TestNoBeginTx(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := setup(t)
 	base := &testDriver1{}
 	wrapped := stdentsaas.NewDriver(base,
 		stdentsaas.AuthenticatedUserSetting("auth.u"),

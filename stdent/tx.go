@@ -10,7 +10,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"go.uber.org/zap"
 
-	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -48,7 +48,7 @@ func Transact1[T Tx, U any](
 	txr *Transactor[T],
 	fnc func(ctx context.Context, tx T) (U, error),
 ) (res U, err error) {
-	logs := stdzapfx.Log(ctx)
+	logs := stdctx.Log(ctx)
 
 	tx, ok := txFromContext[T](ctx)
 	if ok {

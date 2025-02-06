@@ -3,10 +3,13 @@ package stdentsaas_test
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdentsaas"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	entdialect "entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -15,8 +18,7 @@ import (
 )
 
 func TestTxWithinMaxCost(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := setup(t)
 	ctx = stdentsaas.WithAuthenticatedUser(ctx, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f")
 	tx := setupTx(t, ctx, 100)
 
@@ -33,8 +35,7 @@ func TestTxWithinMaxCost(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsQuery(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := setup(t)
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
@@ -43,8 +44,7 @@ func TestTxExceedMaxCostsQuery(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsExec(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := setup(t)
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
@@ -53,16 +53,30 @@ func TestTxExceedMaxCostsExec(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := setup(t)
 	tx := setupTx(t, ctx, 0.00001)
-
 	ctx = stdentsaas.WithNoTestForMaxQueryPlanCosts(ctx)
 
 	var rows entsql.Rows
 	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
 	require.NoError(t, err)
 	require.NoError(t, rows.Close())
+}
+
+func setup(tb testing.TB, timeout ...time.Duration) context.Context {
+	var ctx context.Context
+	var cancel func()
+	if len(timeout) > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout[0])
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+
+	tb.Cleanup(cancel)
+
+	ctx = stdctx.WithLogger(ctx, zap.NewNop())
+
+	return ctx
 }
 
 func setupTx(t *testing.T, ctx context.Context, maxCost float64) entdialect.Tx {

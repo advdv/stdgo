@@ -11,7 +11,7 @@ import (
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
-	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdent"
 	"github.com/jackc/pgx/v5"
 	"github.com/peterldowns/pgtestdb"
@@ -181,7 +181,7 @@ func setup(t *testing.T) (context.Context, *mockClient1, *stdent.Transactor[*moc
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	ctx = stdzapfx.WithLogger(ctx, zap.NewNop())
+	ctx = stdctx.WithLogger(ctx, zap.NewNop())
 
 	cfg, err := pgx.ParseConfig(`postgresql://postgres:postgres@localhost:5440/postgres`)
 	require.NoError(t, err)

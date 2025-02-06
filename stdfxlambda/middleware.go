@@ -3,7 +3,7 @@ package stdfxlambda
 import (
 	"context"
 
-	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdlambda"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
@@ -23,7 +23,7 @@ func WithLogger(next lambda.Handler, logs *zap.Logger) lambda.Handler {
 			zap.String("aws_request_id", lctx.AwsRequestID),
 			zap.String("invoked_function_arn", lctx.InvokedFunctionArn))
 
-		ctx = stdzapfx.WithLogger(ctx, logs)
+		ctx = stdctx.WithLogger(ctx, logs)
 
 		return next.Invoke(ctx, payload)
 	})
