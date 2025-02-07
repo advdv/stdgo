@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -64,7 +65,7 @@ func TestWithTx1(t *testing.T) {
 	require.Equal(t, int64(42), res)
 	require.Equal(t, int64(1), client.numTxs)
 	require.Equal(t, int64(1), client.numCommits)
-	require.Equal(t, int64(0), client.numRollbacks)
+	require.Equal(t, int64(1), client.numRollbacks)
 }
 
 func TestNestedWithTx(t *testing.T) {
@@ -82,7 +83,7 @@ func TestNestedWithTx(t *testing.T) {
 	require.Equal(t, int64(44), res)
 	require.Equal(t, int64(1), client.numTxs)
 	require.Equal(t, int64(1), client.numCommits)
-	require.Equal(t, int64(0), client.numRollbacks)
+	require.Equal(t, int64(1), client.numRollbacks)
 	require.True(t, reachedInner)
 }
 
@@ -109,7 +110,7 @@ func TestPanicRollback(t *testing.T) {
 		})
 	})
 
-	require.Equal(t, int64(1), client.numRollbacks)
+	require.Equal(t, int64(2), client.numRollbacks)
 	require.Equal(t, int64(0), client.numCommits)
 }
 
@@ -120,8 +121,22 @@ func TestRegularRollback(t *testing.T) {
 		return errors.New("some error")
 	}), "some error")
 
-	require.Equal(t, int64(1), client.numRollbacks)
+	require.Equal(t, int64(2), client.numRollbacks)
 	require.Equal(t, int64(0), client.numCommits)
+}
+
+func TestGoexitRollback(t *testing.T) {
+	ctx, client, txr := setup(t)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		stdent.Transact0(ctx, txr, func(ctx context.Context, _ *mockTx1) error {
+			runtime.Goexit()
+			return nil
+		})
+	}()
+	<-done
+	require.Equal(t, int64(1), client.numRollbacks)
 }
 
 func TestSerializableFailure(t *testing.T) {
@@ -172,7 +187,7 @@ func TestSerializableFailure(t *testing.T) {
 	// transaction would first have an attempt count of 1, then 2. Plus the first tx attempt 1. Makes 4.
 	require.Equal(t, int64(4), numAttempts)
 	require.Equal(t, int64(2), client.numCommits)
-	require.Equal(t, int64(1), client.numRollbacks)
+	require.Equal(t, int64(4), client.numRollbacks)
 }
 
 func setup(t *testing.T) (context.Context, *mockClient1, *stdent.Transactor[*mockTx1]) {

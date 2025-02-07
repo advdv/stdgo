@@ -98,6 +98,15 @@ func Transact1[T Tx, U any](
 				return res, err
 			}
 
+			// NOTE: this defer rollback is necessary if a routine is exited with runtime.Goexit(). In that case no
+			// recover is triggered, and no error is returned either. This is common in assertion libraries
+			// such as Testify's require. This defer ensures that the tx is also rolled back in failed tests.
+			defer func() {
+				if err := tx.Rollback(); err != nil {
+					logs.Debug("tx's defer callback failure", zap.Error(err))
+				}
+			}()
+
 			defer func() {
 				if v := recover(); v != nil {
 					logs.Info("recovered panic in tx, rolling back", zap.Any("recovered", v))
