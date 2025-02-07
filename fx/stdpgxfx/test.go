@@ -1,11 +1,11 @@
 package stdpgxfx
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 
 	"github.com/advdv/stdgo/stdfx"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 )
 
@@ -42,16 +42,16 @@ func TestProvide(tb testing.TB, mainPoolName string, derivedPoolNames ...string)
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx",
 		// a wrapped config provider that migrates before providing the config.
 		newTestConfigProvider(tb),
-		// provide the "main" pool, wrapped with migrating logic.
+		// provide the "main" db, wrapped with migrating logic.
 		fx.Provide(fx.Annotate(newDB,
 			fx.ParamTags(
 				`name:"`+mainPoolName+`" optional:"true"`, // deriver
 				`optional:"true"`, // migrator
 			),
 			fx.ResultTags(`name:"`+mainPoolName+`"`))),
-		// re-export as an unamed pool, that is more common in testing.
+		// re-export as an unamed db, that is more common in testing.
 		fx.Provide(
-			fx.Annotate(func(p *pgxpool.Pool) *pgxpool.Pool {
+			fx.Annotate(func(p *sql.DB) *sql.DB {
 				return p
 			}, fx.ParamTags(`name:"`+mainPoolName+`"`))),
 		// included derived pools

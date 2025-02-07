@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestProvideNoDeriver(t *testing.T) {
@@ -35,6 +36,33 @@ func TestProvideNoDeriver(t *testing.T) {
 
 	require.NotNil(t, res.DB0)
 	require.NotNil(t, res.DB1)
+}
+
+func TestNoticeLogging(t *testing.T) {
+	ctx, shared := setup(t)
+
+	var db *sql.DB
+	var obs *observer.ObservedLogs
+
+	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, "rw"), fx.Populate(&db, &obs))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+	require.NotNil(t, db)
+
+	_, err := db.ExecContext(ctx, `DO language plpgsql $$
+BEGIN
+  raise info 'information message' ;
+  raise warning 'warning message';
+  raise notice 'notice message';
+END
+$$;`)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, obs.FilterMessage("notice: information message").Len())
+	require.Equal(t, 1, obs.FilterMessage("notice: warning message").Len())
+	require.Equal(t, 1, obs.FilterMessage("notice: notice message").Len())
+
+	// fmt.Println(obs.All())
 }
 
 func TestProvideWithDeriver(t *testing.T) {

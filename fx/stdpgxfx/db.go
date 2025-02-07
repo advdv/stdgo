@@ -5,12 +5,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/advdv/stdgo/stdfx"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Config configures the module.
@@ -24,6 +27,7 @@ type (
 	Params struct {
 		fx.In
 		Config Config
+		Logs   *zap.Logger
 	}
 
 	// Result describe the main components provided for this module.
@@ -35,10 +39,29 @@ type (
 
 // New is the main constructor. In this package it only provides the pool configuration
 // used through out the package.
-func New(p Params) (r Result, err error) {
-	pcfg, err := pgxpool.ParseConfig(p.Config.MainDatabaseURL)
+func New(params Params) (r Result, err error) {
+	pcfg, err := pgxpool.ParseConfig(params.Config.MainDatabaseURL)
 	if err != nil {
 		return r, fmt.Errorf("failed to parse connecting string: %w", err)
+	}
+
+	// we log notices from the database so debugging on the Go side is easier
+	pcfg.ConnConfig.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
+		level := zapcore.DebugLevel
+		switch strings.ToLower(n.SeverityUnlocalized) {
+		case "info":
+			level = zapcore.InfoLevel
+		case "notice":
+			level = zapcore.InfoLevel
+		case "warning":
+			level = zapcore.WarnLevel
+		case "exception":
+			level = zap.ErrorLevel
+		}
+
+		params.Logs.Log(level, "notice: "+n.Message,
+			zap.String("code", n.Code),
+			zap.String("hint", n.Hint), zap.String("detail", n.Detail))
 	}
 
 	return Result{PoolConfig: pcfg}, nil
