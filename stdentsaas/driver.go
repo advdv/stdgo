@@ -58,10 +58,10 @@ func DiscourageSequentialScans() DriverOption {
 	}
 }
 
-// LoggingLevel configures the level at which transaction logs are send to the logger.
-func LoggingLevel(v zapcore.Level) DriverOption {
+// TxExecQueryLoggingLevel configures the level at which transaction's exec and query sql logs are send to the logger.
+func TxExecQueryLoggingLevel(v zapcore.Level) DriverOption {
 	return func(d *Driver) {
-		d.logLevel = v
+		d.txExecQueryLogLevel = v
 	}
 }
 
@@ -71,13 +71,13 @@ func LoggingLevel(v zapcore.Level) DriverOption {
 type Driver struct {
 	entdialect.Driver
 
-	userSetting        string
-	orgsSetting        string
-	anonUserID         string
-	timeoutExtension   time.Duration
-	maxQueryPlanCosts  float64
-	discourageSeqScans bool
-	logLevel           zapcore.Level
+	userSetting         string
+	orgsSetting         string
+	anonUserID          string
+	timeoutExtension    time.Duration
+	maxQueryPlanCosts   float64
+	discourageSeqScans  bool
+	txExecQueryLogLevel zapcore.Level
 }
 
 // NewDriver inits the driver.
@@ -140,7 +140,7 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("failed to setup tx, rolled back: %w", err)
 	}
 
-	return Tx{tx, d.maxQueryPlanCosts, d.logLevel}, nil
+	return Tx{tx, d.maxQueryPlanCosts, d.txExecQueryLogLevel}, nil
 }
 
 // setupTx preforms shared transaction setup.
