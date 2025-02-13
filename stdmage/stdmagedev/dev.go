@@ -2,9 +2,12 @@
 package stdmagedev
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/advdv/stdgo/stdmage"
@@ -76,6 +79,35 @@ func Serve() error {
 		"-d", "--build", "--remove-orphans", "--force-recreate",
 	); err != nil {
 		return fmt.Errorf("failed to run: %w", err)
+	}
+
+	return nil
+}
+
+// Release tags a version and pushes it to origin.
+func Release() error {
+	filename := "version.txt"
+	version, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to read version file: %w", err)
+	}
+
+	version = bytes.TrimSpace(version)
+
+	if !regexp.MustCompile(`^v([0-9]+).([0-9]+).([0-9]+)$`).Match(version) {
+		return fmt.Errorf("%s: version must be in format vX,Y,Z", filename)
+	}
+
+	tagName := string(version)
+
+	stderr := bytes.NewBuffer(nil)
+	_, err = sh.Exec(nil, nil, stderr, "git", "tag", tagName)
+	if err != nil && !strings.Contains(stderr.String(), "already exists") {
+		return fmt.Errorf("failed to tag: %w", err)
+	}
+
+	if err := sh.Run("git", "push", "origin", tagName); err != nil {
+		return fmt.Errorf("failed to push version tag: %w", err)
 	}
 
 	return nil
