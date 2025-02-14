@@ -17,6 +17,8 @@ var (
 	region = "un.init.1"
 	// profile profile for AWS.
 	profile = "__uninitialized"
+	// profile for bootstrapping the CDK.
+	bootstrapProfile = "__uninitialized"
 	// qualifier for the stack.
 	qualifier = "__uninitialized"
 	// docker image builds to build.
@@ -37,13 +39,14 @@ type DockerBuild struct {
 
 // Init initializes the mage targets.
 func Init(
-	awsRegion, awsProfile, cdkQualifier string,
+	awsRegion, awsProfile, awsBootstrapProfile, cdkQualifier string,
 	dockerBuilds []DockerBuild,
 	executionPolicies []string,
 	noStagingEnv bool,
 ) {
 	region = awsRegion
 	profile = awsProfile
+	bootstrapProfile = awsBootstrapProfile
 	qualifier = cdkQualifier
 	builds = dockerBuilds
 	policies = executionPolicies
@@ -52,10 +55,10 @@ func Init(
 
 // Bootstrap the infra stack using AWS CDK.
 func Bootstrap(env string) error {
-	profile, qual := profileFromEnv(env)
+	_, qual := profileFromEnv(env)
 
 	accountID, err := sh.Output("aws", "sts", "get-caller-identity",
-		"--profile", profile, "--query", "Account", "--output", "text")
+		"--profile", bootstrapProfile, "--query", "Account", "--output", "text")
 	if err != nil {
 		return fmt.Errorf("failed to get account id: %w", err)
 	}
@@ -65,7 +68,7 @@ func Bootstrap(env string) error {
 	}, policies...)
 
 	return cdk(env, qual, "bootstrap",
-		"--profile", profile,
+		"--profile", bootstrapProfile,
 		"--cloudformation-execution-policies", strings.Join(policyNames, ","),
 	)
 }
