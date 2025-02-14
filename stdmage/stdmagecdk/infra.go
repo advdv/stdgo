@@ -2,10 +2,14 @@
 package stdmagecdk
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	_ "embed"
 
 	"github.com/advdv/stdgo/stdcdk"
 	"github.com/destel/rill"
@@ -53,6 +57,39 @@ func Init(
 	noStaging = noStagingEnv
 }
 
+//go:embed developer-boundary.yaml
+var boundaryTemplate []byte
+
+// Boundary sets up a permission boundary in the AWS IAM account.
+func Boundary() error {
+	tmpf, err := os.CreateTemp("", "")
+	if err != nil {
+		return fmt.Errorf("failed to create tmpl file: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "using temporary file: %v", tmpf.Name())
+	if _, err := io.Copy(tmpf, bytes.NewReader(boundaryTemplate)); err != nil {
+		return fmt.Errorf("failed to write template to temporary file: %w", err)
+	}
+
+	defer tmpf.Close()
+	defer os.Remove(tmpf.Name())
+
+	if err := sh.Run(
+		"aws", "cloudformation", "create-stack",
+		"--no-cli-pager",
+		"--profile", "cl-sterndesk-admin",
+		"--region", "eu-central-1",
+		"--stack-name", "DeveloperPolicy",
+		"--template-body", "file://"+tmpf.Name(),
+		"--capabilities", "CAPABILITY_NAMED_IAM",
+	); err != nil {
+		return fmt.Errorf("failed ")
+	}
+
+	return nil
+}
+
 // Bootstrap the infra stack using AWS CDK.
 func Bootstrap(env string) error {
 	_, qual := profileFromEnv(env)
@@ -69,6 +106,7 @@ func Bootstrap(env string) error {
 
 	return cdk(env, qual, "bootstrap",
 		"--profile", bootstrapProfile,
+		"--custom-permissions-boundary", "developer-policy",
 		"--cloudformation-execution-policies", strings.Join(policyNames, ","),
 	)
 }
