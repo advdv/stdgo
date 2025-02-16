@@ -3,6 +3,7 @@ package stdmagecdk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,8 +13,15 @@ import (
 	_ "embed"
 
 	"github.com/advdv/stdgo/stdcdk"
+	"github.com/advdv/stdgo/stdlo"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/destel/rill"
 	"github.com/magefile/mage/sh"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 var (
@@ -31,6 +39,8 @@ var (
 	policies = []string{}
 	// no noStaging can be set to true for projects that don't really have the concept of noStaging.
 	noStaging bool
+	// a ssm parameter prefix that will be added to the context (live) before diff and deploy.
+	liveParamPrefix = "/__uninitialized"
 )
 
 // DockerBuild describes a Docker image to be build.
@@ -47,6 +57,7 @@ func Init(
 	dockerBuilds []DockerBuild,
 	executionPolicies []string,
 	noStagingEnv bool,
+	ssmLiveParamPrefix string,
 ) {
 	region = awsRegion
 	profile = awsProfile
@@ -55,6 +66,7 @@ func Init(
 	builds = dockerBuilds
 	policies = executionPolicies
 	noStaging = noStagingEnv
+	liveParamPrefix = ssmLiveParamPrefix
 }
 
 //go:embed developer-boundary.yaml
@@ -112,13 +124,16 @@ func Bootstrap(env string) error {
 }
 
 // Diff calculates and shows the diff for our infrastructure deploy.
-func Diff(env string) error {
-	return DiffStack(env, "")
+func Diff(ctx context.Context, env string) error {
+	return DiffStack(ctx, env, "")
 }
 
 // DiffStack calculates and shows the diff a specific stack (exclusively).
-func DiffStack(env string, stack string) error {
+func DiffStack(ctx context.Context, env string, stack string) error {
 	profile, qual := profileFromEnv(env)
+	if err := LiveContextParams(ctx, env); err != nil {
+		return fmt.Errorf("failed to setup live SSM parameters: %w", err)
+	}
 
 	if stack == "" {
 		stack = "--all"
@@ -132,13 +147,16 @@ func DiffStack(env string, stack string) error {
 }
 
 // Deploy deploy our infrastructure.
-func Deploy(env string) error {
-	return DeployStack(env, "")
+func Deploy(ctx context.Context, env string) error {
+	return DeployStack(ctx, env, "")
 }
 
 // DeployStack deploys a specific stack of our infrastructure (exclusively).
-func DeployStack(env string, stack string) error {
+func DeployStack(ctx context.Context, env string, stack string) error {
 	profile, qual := profileFromEnv(env)
+	if err := LiveContextParams(ctx, env); err != nil {
+		return fmt.Errorf("failed to setup live SSM parameters: %w", err)
+	}
 
 	if stack == "" {
 		stack = "--all"
@@ -149,6 +167,59 @@ func DeployStack(env string, stack string) error {
 		"--require-approval", "never",
 		"--profile", profile,
 	)
+}
+
+// LiveContextParams updates the cdk context json with live parameter values.
+func LiveContextParams(ctx context.Context, env string) error {
+	profile, _ := profileFromEnv(env)
+
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+		config.WithSharedConfigProfile(profile))
+	if err != nil {
+		return fmt.Errorf("failed to load aws config: %w", err)
+	}
+
+	idn, err := sts.NewFromConfig(cfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return fmt.Errorf("failed to get AWS Account ID: %w", err)
+	}
+
+	cln := ssm.NewFromConfig(cfg)
+	params, err := cln.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
+		Path:      aws.String(liveParamPrefix),
+		Recursive: aws.Bool(true),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get parameters: %w", err)
+	}
+
+	contextPath := filepath.Join("infra", "infracdk", "cdk.context.json")
+
+	data, err := os.ReadFile(contextPath)
+	if err != nil {
+		return fmt.Errorf("failed to read context file: %w", err)
+	}
+
+	for key := range gjson.ParseBytes(data).Map() {
+		prefix := fmt.Sprintf("ssm:account=%s:parameterName=%s", *idn.Account, liveParamPrefix)
+		if strings.HasPrefix(key, prefix) {
+			data = stdlo.Must1(sjson.DeleteBytes(data, key))
+		}
+	}
+
+	// write out parameters to the context in the format that the AWS CDK expects it. This
+	// allows us to read the parameters like any other parameter in our CDK code.
+	for _, param := range params.Parameters {
+		key := fmt.Sprintf("ssm:account=%s:parameterName=%s:region=%s", *idn.Account, *param.Name, region)
+		data = stdlo.Must1(sjson.SetBytes(data, key, param.Value))
+	}
+
+	if err := os.WriteFile(contextPath, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write updated context: %w", err)
+	}
+
+	return nil
 }
 
 // Build infra artifacts for deployment.
