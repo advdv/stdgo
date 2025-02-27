@@ -4,6 +4,7 @@ package stdmageecr
 import (
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/advdv/stdgo/stdmage/stdmagedev"
@@ -39,9 +40,9 @@ func Init(
 
 // BuildPushSetParam triggers a docker build, pushes the image, and sets a parameter in the AWS Parameter store.
 func BuildPushSetParam(env string) error {
-	parameterName := _parameterPrefix + "/api/stag/main"
+	parameterName := path.Join(_parameterPrefix, "stag")
 	if env == "prod" {
-		parameterName = _parameterPrefix + "/api/prod/main"
+		parameterName = path.Join(_parameterPrefix, "prod")
 	}
 
 	// fixes: https://github.com/aws/aws-cdk/issues/33264
