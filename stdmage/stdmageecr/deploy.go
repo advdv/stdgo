@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	_awsProfile           string
-	_awsRegion            string
-	_registry             string
-	_composeContainerName string
-	_repository           string
-	_parameterPrefix      string
+	_awsProfile                  string
+	_awsRegion                   string
+	_registry                    string
+	_dockerImageToInspectForHash string
+	_repository                  string
+	_parameterPrefix             string
 )
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
@@ -24,7 +24,7 @@ func Init(
 	awsProfile string,
 	awsRegion string,
 	registry string,
-	composeContainerName string,
+	dockerImageToInspectForHash string,
 	repository string,
 	parameterPrefix string,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
@@ -32,7 +32,7 @@ func Init(
 	_awsProfile = awsProfile
 	_awsRegion = awsRegion
 	_registry = registry
-	_composeContainerName = composeContainerName
+	_dockerImageToInspectForHash = dockerImageToInspectForHash
 	_repository = repository
 	_parameterPrefix = parameterPrefix
 }
@@ -60,7 +60,7 @@ func BuildPushSetParam(env string) error {
 		return fmt.Errorf("failed to login: %w", err)
 	}
 
-	digestTag, err := sh.Output("docker", "inspect", _composeContainerName, "-f", "{{index .RepoDigests 0}}")
+	digestTag, err := sh.Output("docker", "inspect", _dockerImageToInspectForHash, "-f", "{{index .RepoDigests 0}}")
 	if err != nil {
 		return fmt.Errorf("failed to output digest: %w", err)
 	}
@@ -69,7 +69,7 @@ func BuildPushSetParam(env string) error {
 	finalTag := fmt.Sprintf("%s/%s:%s", _registry, _repository, digest)
 
 	if err := sh.Run("docker", "tag",
-		_composeContainerName, finalTag); err != nil {
+		_dockerImageToInspectForHash, finalTag); err != nil {
 		return fmt.Errorf("failed to tag docker image for pushing: %w", err)
 	}
 
