@@ -97,6 +97,17 @@ func Apply(env string) error {
 		"--env", env)
 }
 
+// DryApply applies the migrations for the provided Atlas environment with the --dry-run flag.
+func DryApply(env string) error {
+	if err := stdmage.LoadEnv(env); err != nil {
+		return err
+	}
+
+	return sh.Run("atlas", "migrate", "apply",
+		"--dry-run",
+		"--env", env)
+}
+
 // Snapshot dumps the migrated schema to an sql file using pg_dump.
 func Snapshot() error {
 	if err := stdmage.LoadEnv(devEnv); err != nil {
