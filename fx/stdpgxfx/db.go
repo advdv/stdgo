@@ -4,10 +4,14 @@ package stdpgxfx
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/advdv/stdgo/stdfx"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -20,14 +24,18 @@ import (
 type Config struct {
 	// MainDatabaseURL configures the database connection string for the main connection.
 	MainDatabaseURL string `env:"MAIN_DATABASE_URL,required"`
+
+	// IamAuthRegion when set cause the password to be replaced by an IAM token for authentication.
+	IamAuthRegion string `env:"IAM_AUTH_REGION"`
 }
 
 type (
 	// Params describe the main parameters for providing components.
 	Params struct {
 		fx.In
-		Config Config
-		Logs   *zap.Logger
+		Config    Config
+		AwsConfig aws.Config `optional:"true"`
+		Logs      *zap.Logger
 	}
 
 	// Result describe the main components provided for this module.
@@ -64,7 +72,56 @@ func New(params Params) (r Result, err error) {
 			zap.String("hint", n.Hint), zap.String("detail", n.Detail))
 	}
 
+	if params.Config.IamAuthRegion != "" {
+		if params.AwsConfig.Credentials == nil {
+			return r, errors.New("IAM authentication is enabled but no AWS configuration provided")
+		}
+
+		// For IAM Auth we need to build a token as a password on every connection attempt
+		pcfg.BeforeConnect = func(ctx context.Context, pgc *pgx.ConnConfig) error {
+			tok, err := buildIamAuthToken(
+				ctx, params.Logs,
+				pcfg.ConnConfig.Port,
+				pcfg.ConnConfig.User,
+				params.AwsConfig.Region,
+				params.AwsConfig,
+				pcfg.ConnConfig.Host)
+			if err != nil {
+				return fmt.Errorf("failed to build iam token: %w", err)
+			}
+
+			pgc.Password = tok
+
+			return nil
+		}
+	}
+
 	return Result{PoolConfig: pcfg}, nil
+}
+
+// buildIamAuthToken will construct a RDS proxy authentication token. We don't run this during the
+// lifecycle phase so we timeout manually with our own context.
+func buildIamAuthToken(
+	ctx context.Context,
+	logs *zap.Logger,
+	port uint16,
+	username, region string,
+	awsc aws.Config,
+	host string,
+) (string, error) {
+	ep := host + ":" + fmt.Sprintf("%d", port)
+
+	logs.Debug("building IAM auth token",
+		zap.String("username", username),
+		zap.String("region", region),
+		zap.String("ep", ep))
+
+	tok, err := auth.BuildAuthToken(ctx, ep, region, username, awsc.Credentials)
+	if err != nil {
+		return "", fmt.Errorf("underlying: %w", err)
+	}
+
+	return tok, nil
 }
 
 // newDB is the low-level constructor for turning our config into sql databases. It is
@@ -79,7 +136,13 @@ func newDB(
 	if deriver != nil {
 		pcfg = deriver(pcfg.Copy())
 	}
-	db := stdlib.OpenDB(*pcfg.ConnConfig)
+
+	opts := []stdlib.OptionOpenDB{}
+	if pcfg.BeforeConnect != nil {
+		opts = append(opts, stdlib.OptionBeforeConnect(pcfg.BeforeConnect))
+	}
+
+	db := stdlib.OpenDB(*pcfg.ConnConfig, opts...)
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			return db.Close()

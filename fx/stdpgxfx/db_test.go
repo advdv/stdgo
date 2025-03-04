@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/advdv/stdgo/fx/stdawsfx"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdenvcfg"
@@ -61,8 +62,37 @@ $$;`)
 	require.Equal(t, 1, obs.FilterMessage("notice: information message").Len())
 	require.Equal(t, 1, obs.FilterMessage("notice: warning message").Len())
 	require.Equal(t, 1, obs.FilterMessage("notice: notice message").Len())
+}
 
-	// fmt.Println(obs.All())
+func TestIamAuth(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "A")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "B")
+
+	var db *sql.DB
+	var pcfg *pgxpool.Config
+	var obs *observer.ObservedLogs
+	app := fxtest.New(t,
+		stdawsfx.Provide(),
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
+		stdenvcfg.ProvideEnvironment(map[string]string{
+			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
+			"STDPGX_IAM_AUTH_REGION":   "eu-central-1",
+			"STDZAP_LEVEL":             "debug",
+		}),
+
+		stdpgxfx.TestProvide(t, "rw"),
+		fx.Populate(&db, &pcfg, &obs))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	require.NotNil(t, pcfg.BeforeConnect)
+
+	// cannot exactly assert it, but log with error should make it work.
+	var res int
+	err := db.QueryRowContext(t.Context(), `SELECT 1+2`).Scan(&res)
+	require.ErrorContains(t, err, "password authentication failed")
+	require.Equal(t, 1, obs.FilterMessage("building IAM auth token").Len())
 }
 
 func TestProvideWithDeriver(t *testing.T) {
@@ -175,9 +205,7 @@ func TestProvideTestWithMigrator(t *testing.T) {
 }
 
 func setup(tb testing.TB) (context.Context, fx.Option) {
-	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
-	return ctx, fx.Options(
+	return tb.Context(), fx.Options(
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdenvcfg.ProvideEnvironment(map[string]string{
