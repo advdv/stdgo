@@ -83,7 +83,7 @@ func New(params Params) (r Result, err error) {
 				ctx, params.Logs,
 				pcfg.ConnConfig.Port,
 				pcfg.ConnConfig.User,
-				params.AwsConfig.Region,
+				params.Config.IamAuthRegion,
 				params.AwsConfig,
 				pcfg.ConnConfig.Host)
 			if err != nil {
