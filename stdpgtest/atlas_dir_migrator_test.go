@@ -13,9 +13,6 @@ import (
 )
 
 func TestAtlasDirMirator(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	var actProgram string
 	var actArgs []string
 	var actDir string
@@ -34,7 +31,7 @@ func TestAtlasDirMirator(t *testing.T) {
 	hash, err := migrator.Hash()
 	require.NoError(t, err)
 	require.Equal(t, "4a7517b72e8d2715cd3e73d4be8d37ea", hash)
-	require.NoError(t, migrator.Migrate(ctx, nil, pgtestdb.Config{
+	require.NoError(t, migrator.Migrate(t.Context(), nil, pgtestdb.Config{
 		User:     "user",
 		Password: "pass",
 		Host:     "host",

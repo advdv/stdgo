@@ -20,9 +20,6 @@ func (mdb *mockDB) ExecContext(ctx context.Context, query string, args ...any) (
 }
 
 func TestSnapshotMigrator(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
 	db := &mockDB{}
 	mig := stdpgtest.SnapshotMigrator[*mockDB]("testdata/snapshot.sql")
 
@@ -30,6 +27,6 @@ func TestSnapshotMigrator(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "b8b7229b3d14d716013c68cf2e1c108733d81ed7bca91a810ac4b4685b2b7097", h1)
 
-	require.NoError(t, mig.Migrate(ctx, db, pgtestdb.Config{}))
+	require.NoError(t, mig.Migrate(t.Context(), db, pgtestdb.Config{}))
 	require.Contains(t, db.lastSQL, "CREATE TABLE")
 }

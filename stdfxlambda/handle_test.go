@@ -26,12 +26,12 @@ func TestMarshalUnmarshal(t *testing.T) {
 		expRequestID, expFuncARN string
 	}{
 		{
-			ctx:          context.Background(),
+			ctx:          t.Context(),
 			expRequestID: "not-in-lambda-id",
 			expFuncARN:   "arn:aws:lambda:::not-in-lambda",
 		},
 		{
-			ctx: lambdacontext.NewContext(context.Background(), &lambdacontext.LambdaContext{
+			ctx: lambdacontext.NewContext(t.Context(), &lambdacontext.LambdaContext{
 				AwsRequestID:       "actual-request-id",
 				InvokedFunctionArn: "func_arn",
 			}),
@@ -69,7 +69,6 @@ func TestMarshalUnmarshal(t *testing.T) {
 }
 
 func TestHandle_PanicWithoutLambdaContext(t *testing.T) {
-	ctx := context.Background()
 	logs, err := zap.NewDevelopment()
 	require.NoError(t, err)
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", "dummy-runtime-api")
@@ -79,6 +78,6 @@ func TestHandle_PanicWithoutLambdaContext(t *testing.T) {
 	}
 
 	require.PanicsWithValue(t, "no lambda context available", func() {
-		stdfxlambda.Handle(ctx, logs, []byte(`{"bar":"foo"}`), handleFn)
+		stdfxlambda.Handle(t.Context(), logs, []byte(`{"bar":"foo"}`), handleFn)
 	})
 }

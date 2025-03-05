@@ -23,9 +23,8 @@ func (m *mockHandler) Invoke(ctx context.Context, payload []byte) ([]byte, error
 func Test_WithLoggerPanic(t *testing.T) {
 	hdlr := stdfxlambda.WithLogger(&mockHandler{}, zap.NewExample())
 
-	ctx := context.Background()
 	assert.PanicsWithValue(t, "stdfxlambda: no lambda context available", func() {
-		hdlr.Invoke(ctx, []byte("abc"))
+		hdlr.Invoke(t.Context(), []byte("abc"))
 	})
 }
 
@@ -34,7 +33,7 @@ func Test_WithLogger(t *testing.T) {
 	logs := zap.New(zc)
 	hdlr := stdfxlambda.WithLogger(&mockHandler{}, logs)
 
-	ctx := lambdacontext.NewContext(context.Background(), &lambdacontext.LambdaContext{
+	ctx := lambdacontext.NewContext(t.Context(), &lambdacontext.LambdaContext{
 		AwsRequestID:       "some-id",
 		InvokedFunctionArn: "some-arn",
 	})

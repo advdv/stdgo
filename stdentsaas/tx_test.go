@@ -67,9 +67,9 @@ func setup(tb testing.TB, timeout ...time.Duration) context.Context {
 	var ctx context.Context
 	var cancel func()
 	if len(timeout) > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), timeout[0])
+		ctx, cancel = context.WithTimeout(tb.Context(), timeout[0])
 	} else {
-		ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel = context.WithCancel(tb.Context())
 	}
 
 	tb.Cleanup(cancel)

@@ -193,10 +193,7 @@ func TestSerializableFailure(t *testing.T) {
 func setup(t *testing.T) (context.Context, *mockClient1, *stdent.Transactor[*mockTx1]) {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	ctx = stdctx.WithLogger(ctx, zap.NewNop())
+	ctx := stdctx.WithLogger(t.Context(), zap.NewNop())
 
 	cfg, err := pgx.ParseConfig(`postgresql://postgres:postgres@localhost:5440/postgres`)
 	require.NoError(t, err)

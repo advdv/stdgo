@@ -4,7 +4,8 @@ dir: "{{.InterfaceDir}}/{{.PackageName}}mock"
 mockname: "Mock{{.InterfaceName}}"
 outpkg: "{{.PackageName}}mock"
 resolve-type-alias: false
-issue-845-fix: True
+issue-845-fix: true
+disable-version-string: true
 packages:
   github.com/advdv/stdgo/stdlambda:
     interfaces:

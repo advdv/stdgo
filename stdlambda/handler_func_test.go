@@ -18,9 +18,6 @@ func TestJSONHandler(t *testing.T) {
 	type Input struct{ Foo string }
 	type Output struct{ Bar string }
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
 	type GWInput = events.APIGatewayProxyRequest
 	type GWOutput = events.APIGatewayProxyResponse
 
@@ -106,7 +103,7 @@ func TestJSONHandler(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
-			data, err := tt.handler.Invoke(ctx, tt.payload)
+			data, err := tt.handler.Invoke(t.Context(), tt.payload)
 			tt.assert(t, err, data)
 		})
 	}

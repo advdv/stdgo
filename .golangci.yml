@@ -55,8 +55,8 @@ linters:
     - nlreturn # too annoying for small functions
     - mnd # just too annoying
     - wrapcheck
-    - exportloopref # deprecated
     - thelper # not usefull it seems
+    - tenv # deprecated
 
 issues:
   include:

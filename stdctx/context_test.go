@@ -1,7 +1,6 @@
 package stdctx_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/advdv/stdgo/stdctx"
@@ -12,28 +11,24 @@ import (
 
 func TestLog_WithLogger(t *testing.T) {
 	logger := zap.NewExample()
-	ctx := context.Background()
-	ctxWithLogger := stdctx.WithLogger(ctx, logger)
+	ctxWithLogger := stdctx.WithLogger(t.Context(), logger)
 	assert.Equal(t, logger, stdctx.Log(ctxWithLogger))
 }
 
 func TestLog_NoLoggerPanics(t *testing.T) {
-	ctx := context.Background()
 	assert.PanicsWithValue(t, "stdctx: no logger in context", func() {
-		stdctx.Log(ctx)
+		stdctx.Log(t.Context())
 	})
 }
 
 func TestLog_MaybeLogger(t *testing.T) {
-	ctx := context.Background()
-	assert.NotNil(t, stdctx.MaybeLog(ctx))
+	assert.NotNil(t, stdctx.MaybeLog(t.Context()))
 }
 
 func TestWithLogger_OverridesExistingLogger(t *testing.T) {
 	logger1 := zap.NewExample()
 	logger2 := zap.NewExample()
-	ctx := context.Background()
-	ctxWithLogger1 := stdctx.WithLogger(ctx, logger1)
+	ctxWithLogger1 := stdctx.WithLogger(t.Context(), logger1)
 	ctxWithLogger2 := stdctx.WithLogger(ctxWithLogger1, logger2)
 	assert.Equal(t, logger2, stdctx.Log(ctxWithLogger2))
 }

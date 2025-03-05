@@ -1,7 +1,6 @@
 package stdentsaas_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/advdv/stdgo/stdentsaas"
@@ -9,10 +8,7 @@ import (
 )
 
 func TestAuthenticatedOrganizationsContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	ctx = stdentsaas.WithAuthenticatedOrganizations(ctx,
+	ctx := stdentsaas.WithAuthenticatedOrganizations(t.Context(),
 		stdentsaas.OrganizationRole{OrganizationID: "1", Role: "member"},
 		stdentsaas.OrganizationRole{OrganizationID: "2", Role: "admin"})
 
@@ -27,10 +23,7 @@ func TestAuthenticatedOrganizationsContext(t *testing.T) {
 }
 
 func TestAuthenticatedOrganizationsContextPanic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	v, ok := stdentsaas.AuthenticatedOrganizations(ctx)
+	v, ok := stdentsaas.AuthenticatedOrganizations(t.Context())
 	require.False(t, ok)
 	require.Nil(t, v)
 }

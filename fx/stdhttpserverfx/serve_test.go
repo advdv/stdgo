@@ -1,7 +1,6 @@
 package stdhttpserverfx_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -17,7 +16,7 @@ func TestServe(t *testing.T) {
 	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 	var addr netip.AddrPort
-	ctx, app := context.Background(), fx.New(
+	ctx, app := t.Context(), fx.New(
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
 		fx.Populate(&addr),
 

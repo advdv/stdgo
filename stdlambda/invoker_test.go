@@ -1,7 +1,6 @@
 package stdlambda_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -70,16 +69,13 @@ func TestInvoker(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
-
 			client := stdlambdamock.NewMockLambda(t)
 			client.EXPECT().
 				Invoke(mock.Anything, tt.expInvokeInput).
 				Return(tt.invokeOutput, nil)
 
 			invoker := stdlambda.NewInvoker[color.Color, color.Color](client, "some:arn")
-			output, err := invoker.Invoke(ctx, color.Color{})
+			output, err := invoker.Invoke(t.Context(), color.Color{})
 			tt.assert(t, err, output)
 		})
 	}
@@ -136,16 +132,13 @@ func TestProtoInvoker(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
-
 			client := stdlambdamock.NewMockLambda(t)
 			client.EXPECT().
 				Invoke(mock.Anything, tt.expInvokeInput).
 				Return(tt.invokeOutput, nil)
 
 			invoker := stdlambda.NewProtoInvoker[color.Color, color.Color](client, "some:arn")
-			output, err := invoker.Invoke(ctx, &color.Color{})
+			output, err := invoker.Invoke(t.Context(), &color.Color{})
 			tt.assert(t, err, output)
 		})
 	}

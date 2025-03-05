@@ -1,7 +1,6 @@
 package stdpgtest_test
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 
@@ -14,10 +13,7 @@ import (
 const connStr = "postgresql://postgres:postgres@localhost:5440/postgres?sslmode=disable"
 
 func TestSetupPgxPool(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	pool := stdpgtest.SetupPgxPool(ctx, t, filepath.Join("testdata", "snapshot.sql"), connStr)
+	pool := stdpgtest.SetupPgxPool(t.Context(), t, filepath.Join("testdata", "snapshot.sql"), connStr)
 	require.NotNil(t, pool)
-	require.NoError(t, pool.Ping(ctx))
+	require.NoError(t, pool.Ping(t.Context()))
 }

@@ -26,40 +26,32 @@ func (*mockTx1) QueryContext(ctx context.Context, query string, args ...any) (*s
 func (*mockTx1) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row { return nil }
 
 func TestExecf(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	tx := &mockTx1{}
 
-	stdmigrate.ExecFile(ctx, tx, testData, "testdata/some_sql.sql")
+	stdmigrate.ExecFile(t.Context(), tx, testData, "testdata/some_sql.sql")
 }
 
 func TestUp(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	tx := &mockTx1{}
 
 	require.NoError(t, stdmigrate.Up(func(ctx context.Context, tx stdmigrate.Tx) {
 		stdmigrate.ExecFile(ctx, tx, testData, "testdata/some_sql.sql")
-	})(ctx, tx))
+	})(t.Context(), tx))
 
 	require.Equal(t, "CREATE TABLE users();\n\n", tx.lastQuery)
 }
 
 func TestUpError(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	tx := &mockTx1{}
 
 	require.ErrorContains(t, stdmigrate.Up(func(ctx context.Context, tx stdmigrate.Tx) {
 		stdmigrate.ExecFile(ctx, tx, testData, "testdaata/some_sql.sql")
-	})(ctx, tx), "file does not exist")
+	})(t.Context(), tx), "file does not exist")
 }
 
 func TestUpStdNoOp(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	tx := &sql.Tx{}
 
 	require.NoError(t, stdmigrate.Up(func(ctx context.Context, tx stdmigrate.Tx) {
-	})(ctx, tx))
+	})(t.Context(), tx))
 }

@@ -18,9 +18,6 @@ func (c mockContainer) Endpoint(context.Context, string) (string, error) {
 }
 
 func TestLambdaRIEContainer(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	hdir, _ := os.UserHomeDir()
 
 	var calledCreate, calledCleanup bool
@@ -42,7 +39,7 @@ func TestLambdaRIEContainer(t *testing.T) {
 		calledCleanup = true
 	}
 
-	req := stdtestcontainer.SetupLambdaRIEContainer(t, ctx,
+	req := stdtestcontainer.SetupLambdaRIEContainer(t, t.Context(),
 		"myimage",
 		[]string{"/bar"},
 		"linux/amd64",
