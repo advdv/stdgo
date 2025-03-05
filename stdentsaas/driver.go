@@ -86,6 +86,9 @@ func NewDriver(
 	opts ...DriverOption,
 ) *Driver {
 	drv := &Driver{Driver: base}
+	AuthenticatedUserSetting("auth.user_id")(drv)
+	AuthenticatedOrganizationsSetting("auth.organizations")(drv)
+
 	for _, opt := range opts {
 		opt(drv)
 	}
