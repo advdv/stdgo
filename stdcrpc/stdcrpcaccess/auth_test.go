@@ -8,8 +8,7 @@ import (
 
 	_ "embed"
 
-	stdcrpcaccess "github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
-	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess/stdcrpcaccesstest"
+	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 	"github.com/stretchr/testify/require"
@@ -21,11 +20,11 @@ import (
 func permissionToProcedure(s string, _ int) string { return s }
 
 func TestCheckAuth(t *testing.T) {
-	tsrv := stdcrpcaccesstest.TestKeyServer()
+	tsrv := stdcrpcaccess.FixedKeyServer()
 
 	tok := openid.New()
 	tok.Set("permissions", []string{"/a/b", "/x/y"})
-	validToken1, err := stdcrpcaccesstest.SignToken(tok)
+	validToken1, err := stdcrpcaccess.SignToken(tok)
 	require.NoError(t, err)
 
 	for _, tt := range []struct {
@@ -118,7 +117,7 @@ func TestCheckAuth(t *testing.T) {
 }
 
 func TestWithHTTPClient(t *testing.T) {
-	tsrv := stdcrpcaccesstest.TestKeyServer()
+	tsrv := stdcrpcaccess.FixedKeyServer()
 	ac := stdcrpcaccess.New(tsrv.URL, permissionToProcedure)
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
@@ -139,7 +138,7 @@ func TestWithHTTPClient(t *testing.T) {
 	tok := openid.New()
 	tok.Set("permissions", []string{"/a/b"})
 
-	cln := stdcrpcaccesstest.WithSignedToken(srv.Client(), func(r *http.Request) openid.Token { return tok })
+	cln := stdcrpcaccess.WithSignedToken(srv.Client(), func(r *http.Request) openid.Token { return tok })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })

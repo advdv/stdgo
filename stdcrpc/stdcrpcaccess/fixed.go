@@ -1,5 +1,4 @@
-// Package stdcrpcaccesstest provides testing utilities for testing with access control.
-package stdcrpcaccesstest
+package stdcrpcaccess
 
 import (
 	_ "embed"
@@ -11,13 +10,43 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
+	"go.uber.org/fx"
 )
 
-//go:embed test_jwks.json
+//go:embed fixed_jwks.json
 var jwksData []byte
 
-// TestKeyServer starts a server for testing that serves the key set.
-func TestKeyServer() *httptest.Server {
+// FixedAuthBackend is an auth backend that is run locally and we control the signing process for.
+type FixedAuthBackend struct {
+	https *httptest.Server
+}
+
+func (ap FixedAuthBackend) JWKSEndpoint() string {
+	return ap.https.URL
+}
+
+// WithFixedAuthBackend injects dependencies for allowing tests to sign and validate access tokens.
+func WithFixedAuthBackend() fx.Option {
+	return fx.Options(
+		// provide a auth backend that returns jwks locally. so we have them under control.
+		fx.Provide(func() *FixedAuthBackend {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(jwksData)
+			}))
+
+			return &FixedAuthBackend{srv}
+		}),
+
+		// decorate by replacing with our test provider. This will make the rpc code call
+		// our local test server instead of the real endpoint.
+		fx.Decorate(func(_ AuthBackend, tap *FixedAuthBackend) AuthBackend {
+			return tap
+		}),
+	)
+}
+
+// FixedKeyServer starts a server for testing that serves the key set.
+func FixedKeyServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(jwksData)
 	}))
