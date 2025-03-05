@@ -11,6 +11,7 @@ import (
 	stdcrpcaccess "github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess/stdcrpcaccesstest"
 	"github.com/advdv/stdgo/stdctx"
+	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,7 +22,11 @@ func permissionToProcedure(s string, _ int) string { return s }
 
 func TestCheckAuth(t *testing.T) {
 	tsrv := stdcrpcaccesstest.TestKeyServer()
-	validToken1 := stdcrpcaccesstest.SignTestJWT(t, []string{"/a/b", "/x/y"})
+
+	tok := openid.New()
+	tok.Set("permissions", []string{"/a/b", "/x/y"})
+	validToken1, err := stdcrpcaccesstest.SignToken(tok)
+	require.NoError(t, err)
 
 	for _, tt := range []struct {
 		name       string
@@ -129,10 +134,12 @@ func TestWithHTTPClient(t *testing.T) {
 	srv := httptest.NewServer(outer)
 
 	ctx := t.Context()
-	ctx = stdcrpcaccess.WithProcedurePermissions(ctx, []string{"/a/b"})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/a/b", nil)
 
-	cln := stdcrpcaccesstest.WithTestToken(t, srv.Client())
+	tok := openid.New()
+	tok.Set("permissions", []string{"/a/b"})
+
+	cln := stdcrpcaccesstest.WithSignedToken(srv.Client(), func(r *http.Request) openid.Token { return tok })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })

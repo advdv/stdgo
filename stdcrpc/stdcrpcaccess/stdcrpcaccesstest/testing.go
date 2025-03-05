@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
 	"connectrpc.com/connect"
-	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
-	"github.com/stretchr/testify/require"
 )
 
 //go:embed test_jwks.json
@@ -26,32 +23,39 @@ func TestKeyServer() *httptest.Server {
 	}))
 }
 
-// SignTestJWT signs a valid JWT against a well-known private key for testing.
-func SignTestJWT(tb testing.TB, permissions []string) string {
+// SignToken signs a valid JWT against a well-known private key for testing.
+func SignToken(tok openid.Token) (string, error) {
 	jwks, err := jwk.Parse(jwksData)
-	require.NoError(tb, err)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse jwk: %w", err)
+	}
 
 	sk, ok := jwks.LookupKeyID("key1")
-	require.True(tb, ok)
-
-	tok := openid.New()
-	require.NoError(tb, tok.Set("permissions", permissions))
+	if !ok {
+		return "", fmt.Errorf("no key with id jwk")
+	}
 
 	b, err := jwt.Sign(tok, jwt.WithKey(sk.Algorithm(), sk))
-	require.NoError(tb, err)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign: %w", err)
+	}
 
-	return string(b)
+	return string(b), nil
 }
 
 type withTestToken func(*http.Request) (*http.Response, error)
 
 func (f withTestToken) Do(r *http.Request) (*http.Response, error) { return f(r) }
 
-// WithTestToken is a http client middleware that always adds a valid (self signed) token for testing.
-func WithTestToken(tb testing.TB, base connect.HTTPClient) connect.HTTPClient {
+// WithSignedToken is a http client middleware that always adds a valid (self signed) token for testing.
+func WithSignedToken(base connect.HTTPClient, createToken func(r *http.Request) openid.Token) connect.HTTPClient {
 	return withTestToken(func(r *http.Request) (*http.Response, error) {
-		permissions := stdcrpcaccess.PermissionsFromContext(r.Context())
-		r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", SignTestJWT(tb, permissions)))
+		token, err := SignToken(createToken(r))
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign test token: %w", err)
+		}
+
+		r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 		return base.Do(r)
 	})

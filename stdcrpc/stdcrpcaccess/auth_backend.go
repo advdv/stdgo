@@ -1,6 +1,6 @@
 package stdcrpcaccess
 
-// AuthBackend represents what is necesary of an auth backend.
+// AuthBackend represents what is required of an auth backend.
 type AuthBackend interface {
 	JWKSEndpoint() string
 }
