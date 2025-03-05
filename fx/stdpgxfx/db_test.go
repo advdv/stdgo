@@ -45,7 +45,7 @@ func TestNoticeLogging(t *testing.T) {
 	var db *sql.DB
 	var obs *observer.ObservedLogs
 
-	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, "rw"), fx.Populate(&db, &obs))
+	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "rw"), fx.Populate(&db, &obs))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
 	require.NotNil(t, db)
@@ -81,7 +81,7 @@ func TestIamAuth(t *testing.T) {
 			"STDZAP_LEVEL":             "debug",
 		}),
 
-		stdpgxfx.TestProvide(t, "rw"),
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "rw"),
 		fx.Populate(&db, &pcfg, &obs))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
@@ -138,7 +138,7 @@ func TestProvideTest(t *testing.T) {
 	}
 
 	app := fxtest.New(t, shared,
-		stdpgxfx.TestProvide(t, "db0", "db1"),
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "db0", "db1"),
 		fx.Populate(&res))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
@@ -161,14 +161,16 @@ func TestProvideTestWithMigrator(t *testing.T) {
 	var db0DerivedUser string
 	var db0DerivedPassword string
 
+	mig := goosemigrator.New(filepath.Join("testdata", "migrations1"))
+
 	app := fxtest.New(t, shared,
-		stdpgxfx.TestProvide(t, "db0", "db1"),
+		stdpgxfx.TestProvide(t, mig, "db0", "db1"),
 		// provide the pgtesdb migrator.
-		fx.Provide(func() pgtestdb.Migrator {
-			return goosemigrator.New(filepath.Join("testdata", "migrations1"))
-		}),
-		// provide the mimplementation of our test migrator
-		fx.Provide(stdpgxfx.NewPgtestdbTestMigrator),
+		// fx.Provide(func() pgtestdb.Migrator {
+		// 	return goosemigrator.New(filepath.Join("testdata", "migrations1"))
+		// }),
+		// // provide the mimplementation of our test migrator
+		// fx.Provide(stdpgxfx.NewPgtestdbTestMigrator),
 		// imagine an after migration user, such that the deriver can see it.
 		fx.Supply(&pgtestdb.Role{
 			Username: "postgres",

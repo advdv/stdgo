@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/stdfx"
+	"github.com/peterldowns/pgtestdb"
 	"go.uber.org/fx"
 )
 
 // an fx.In that is build by composing.
 type testConfigProviderParams struct {
 	Params
-	Migrator TestMigrator `optional:"true"`
+	Migrator TestMigrator
 }
 
 // newTestConfigProvider wraps the non-testing config provider such that it can
@@ -36,12 +37,17 @@ func newTestConfigProvider(tb testing.TB) func(testConfigProviderParams) (Result
 }
 
 // TestProvide provides the package's components as an fx module with a setup more useful for testing.
-func TestProvide(tb testing.TB, mainPoolName string, derivedPoolNames ...string) fx.Option {
+func TestProvide(tb testing.TB, mig pgtestdb.Migrator, mainPoolName string, derivedPoolNames ...string) fx.Option {
 	tb.Helper()
 
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx",
 		// a wrapped config provider that migrates before providing the config.
 		newTestConfigProvider(tb),
+
+		// setup dependecies for the test config provider.
+		fx.Provide(func() pgtestdb.Migrator { return mig }),
+		fx.Provide(NewPgtestdbTestMigrator),
+
 		// provide the "main" db, wrapped with migrating logic.
 		fx.Provide(fx.Annotate(newDB,
 			fx.ParamTags(
