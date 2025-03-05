@@ -15,10 +15,10 @@ import (
 )
 
 // SetupPgxPool will init a isolated test database from a connection string and a snapshot sql file.
-func SetupPgxPool(ctx context.Context, tb testing.TB, snapshotFile, connString string) *pgxpool.Pool {
+func SetupPgxPool(ctx context.Context, tb testing.TB, snapshot []byte, connString string) *pgxpool.Pool {
 	tb.Helper()
 
-	migrator := SnapshotMigrator[*sql.DB](snapshotFile)
+	migrator := SnapshotMigrator[*sql.DB](snapshot)
 	testCfg := NewPgxTestDB(tb, migrator, connString, nil)
 
 	pcfg, err := pgxpool.ParseConfig(testCfg.URL())

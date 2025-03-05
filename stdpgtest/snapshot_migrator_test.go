@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
+	_ "embed"
+
 	"github.com/advdv/stdgo/stdpgtest"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/stretchr/testify/require"
@@ -19,9 +21,12 @@ func (mdb *mockDB) ExecContext(ctx context.Context, query string, args ...any) (
 	return nil, nil
 }
 
+//go:embed testdata/snapshot.sql
+var snapshot []byte
+
 func TestSnapshotMigrator(t *testing.T) {
 	db := &mockDB{}
-	mig := stdpgtest.SnapshotMigrator[*mockDB]("testdata/snapshot.sql")
+	mig := stdpgtest.SnapshotMigrator[*mockDB](snapshot)
 
 	h1, err := mig.Hash()
 	require.NoError(t, err)
