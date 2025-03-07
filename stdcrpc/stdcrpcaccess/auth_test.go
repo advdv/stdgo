@@ -2,6 +2,7 @@ package stdcrpcaccess_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdctx"
+	"github.com/advdv/stdgo/stdlo"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -24,6 +26,7 @@ func TestCheckAuth(t *testing.T) {
 
 	tok := openid.New()
 	tok.Set("permissions", []string{"/a/b", "/x/y"})
+	tok.Set("role", "some-role")
 	validToken1, err := stdcrpcaccess.SignToken(tok)
 	require.NoError(t, err)
 
@@ -84,7 +87,7 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok", "/a/b", http.StatusOK,
-			`["/a/b", "/x/y"]`,
+			`{"permissions":["/a/b", "/x/y"],"role":"some-role"}`,
 			func(h http.Header) {
 				h.Set("X-Amzn-Oidc-Accesstoken", validToken1)
 			},
@@ -104,7 +107,10 @@ func TestCheckAuth(t *testing.T) {
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
 
 			ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(stdcrpcaccess.PermissionsFromContext(r.Context()))
+				json.NewEncoder(w).Encode(map[string]any{
+					"permissions": stdcrpcaccess.PermissionsFromContext(r.Context()),
+					"role":        stdcrpcaccess.RoleFromContext(r.Context()),
+				})
 			})).ServeHTTP(rec, req)
 
 			require.Equal(t, tt.expCode, rec.Code)
@@ -123,7 +129,10 @@ func TestWithHTTPClient(t *testing.T) {
 	logs := zap.New(zc)
 
 	innter := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(stdcrpcaccess.PermissionsFromContext(r.Context()))
+		json.NewEncoder(w).Encode(map[string]any{
+			"permissions": stdcrpcaccess.PermissionsFromContext(r.Context()),
+			"role":        stdcrpcaccess.RoleFromContext(r.Context()),
+		})
 	}))
 
 	outer := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,11 +146,14 @@ func TestWithHTTPClient(t *testing.T) {
 
 	tok := openid.New()
 	tok.Set("permissions", []string{"/a/b"})
+	tok.Set("role", "some-role")
 
 	cln := stdcrpcaccess.WithSignedToken(srv.Client(), func(r *http.Request) openid.Token { return tok })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
 
+	body := stdlo.Must1(io.ReadAll(resp.Body))
+	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role"}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
 }

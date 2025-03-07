@@ -24,7 +24,7 @@ type ctxKey string
 func PermissionsFromContext(ctx context.Context) []string {
 	val, ok := ctx.Value(ctxKey("procedure_permissions")).([]string)
 	if !ok {
-		panic("rpcauth0: no procedure permissions in context")
+		panic("stdcrpcaccess: no procedure permissions in context")
 	}
 
 	return val
@@ -33,6 +33,21 @@ func PermissionsFromContext(ctx context.Context) []string {
 // WithProcedurePermissions returns a context with permission strings.
 func WithProcedurePermissions(ctx context.Context, procs []string) context.Context {
 	return context.WithValue(ctx, ctxKey("procedure_permissions"), procs)
+}
+
+// RoleFromContext returns permissions from the context.
+func RoleFromContext(ctx context.Context) string {
+	val, ok := ctx.Value(ctxKey("role")).(string)
+	if !ok {
+		panic("stdcrpcaccess: no role in context")
+	}
+
+	return val
+}
+
+// WithRole returns a context with the role added to it.
+func WithRole(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, ctxKey("role"), role)
 }
 
 // PermissionToProcedure is used for an authorization scheme were some permission string is compared to
@@ -68,6 +83,12 @@ func New(jwkEndpoint string, permMapFn PermissionToProcedure) *AccessControl {
 // Close cancels the lifecycle context.
 func (ac *AccessControl) Close(context.Context) error { ac.stop(); return nil }
 
+// authInfo describes what is passed between middlewares as result of authentication.
+type authInfo struct {
+	Role        string
+	Permissions []string
+}
+
 // checkAuth implements the core checkAuth logic.
 func (ac *AccessControl) checkAuth(ctx context.Context, req *http.Request) (any, error) {
 	logs := stdctx.Log(ctx)
@@ -89,31 +110,32 @@ func (ac *AccessControl) checkAuth(ctx context.Context, req *http.Request) (any,
 		return nil, authn.Errorf("invalid token")
 	}
 
-	claimMap, claims := tok.PrivateClaims(), struct{ Permissions []string }{}
-	if err := mapstructure.Decode(claimMap, &claims); err != nil {
+	claimMap, info := tok.PrivateClaims(), authInfo{}
+	if err := mapstructure.Decode(claimMap, &info); err != nil {
 		return nil, authn.Errorf("failed to decode claims: %w", err)
 	}
 
-	allowedProcedures := stdlo.Map(claims.Permissions, ac.permMapFn)
+	info.Permissions = stdlo.Map(info.Permissions, ac.permMapFn)
 
 	logs.Info("authorizing token",
+		zap.String("role", info.Role),
 		zap.Any("all_claims", claimMap),
-		zap.Strings("allowed_procedures", allowedProcedures))
+		zap.Strings("allowed_procedures", info.Permissions))
 
 	currentProcedure, ok := authn.InferProcedure(req.URL)
 	if !ok {
 		return nil, authzErrorf("unable to determine RPC procedure")
 	}
 
-	if !slices.Contains(allowedProcedures, currentProcedure) {
+	if !slices.Contains(info.Permissions, currentProcedure) {
 		logs.Info("access to procedure denied",
 			zap.String("current_procedure", currentProcedure),
-			zap.Strings("allowed_procedures", allowedProcedures))
+			zap.Strings("allowed_procedures", info.Permissions))
 
 		return nil, authzErrorf("procedure not allowed")
 	}
 
-	return allowedProcedures, nil
+	return info, nil
 }
 
 func authzErrorf(format string, a ...any) error {
@@ -123,9 +145,11 @@ func authzErrorf(format string, a ...any) error {
 func (ac *AccessControl) Wrap(next http.Handler) http.Handler {
 	// create a small middleware that transforms from the authn middleware value into our own type.
 	inner := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		perms, _ := authn.GetInfo(r.Context()).([]string)
-		r = r.WithContext(WithProcedurePermissions(r.Context(), perms))
-		next.ServeHTTP(w, r)
+		info, _ := authn.GetInfo(r.Context()).(authInfo)
+		ctx := r.Context()
+		ctx = WithProcedurePermissions(ctx, info.Permissions)
+		ctx = WithRole(ctx, info.Role)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	}))
 
 	// the actual auth logic being performed.
