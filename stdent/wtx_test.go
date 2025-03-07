@@ -63,9 +63,12 @@ func TestBeginHook(t *testing.T) {
 	var called bool
 	ctx := setup1(t)
 	tx := setupTx(t, ctx, 1, stdent.BeginHook(func(
-		ctx context.Context, sql strings.Builder, tx stdent.Tx,
-	) (strings.Builder, error) {
+		ctx context.Context, sql *strings.Builder, tx stdent.Tx,
+	) (*strings.Builder, error) {
 		called = true
+
+		sql.WriteString("SET LOCAL auth.foo='bar';")
+
 		return sql, nil
 	}))
 
