@@ -1,12 +1,13 @@
-package stdentsaas_test
+package stdent_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/advdv/stdgo/stdctx"
-	"github.com/advdv/stdgo/stdentsaas"
+	"github.com/advdv/stdgo/stdent"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -18,15 +19,10 @@ import (
 )
 
 func TestTxWithinMaxCost(t *testing.T) {
-	ctx := setup(t)
-	ctx = stdentsaas.WithAuthenticatedUser(ctx, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f")
+	ctx := setup1(t)
 	tx := setupTx(t, ctx, 100)
 
 	var rows entsql.Rows
-	require.NoError(t, tx.Query(ctx, `SELECT current_setting('auth.user_id')`, []any{}, &rows))
-	currentUserID, err := entsql.ScanString(rows)
-	require.NoError(t, err)
-	require.Equal(t, "a2a0a29c-dbc1-4d0b-b379-afa2af5ab00f", currentUserID)
 
 	require.NoError(t, tx.Query(ctx, `SELECT current_setting('ENABLE_SEQSCAN')`, []any{}, &rows))
 	enableSeqScan, err := entsql.ScanString(rows)
@@ -35,7 +31,7 @@ func TestTxWithinMaxCost(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsQuery(t *testing.T) {
-	ctx := setup(t)
+	ctx := setup1(t)
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
@@ -44,7 +40,7 @@ func TestTxExceedMaxCostsQuery(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsExec(t *testing.T) {
-	ctx := setup(t)
+	ctx := setup1(t)
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
@@ -53,9 +49,9 @@ func TestTxExceedMaxCostsExec(t *testing.T) {
 }
 
 func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
-	ctx := setup(t)
+	ctx := setup1(t)
 	tx := setupTx(t, ctx, 0.00001)
-	ctx = stdentsaas.WithNoTestForMaxQueryPlanCosts(ctx)
+	ctx = stdent.WithNoTestForMaxQueryPlanCosts(ctx)
 
 	var rows entsql.Rows
 	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
@@ -63,7 +59,22 @@ func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
 	require.NoError(t, rows.Close())
 }
 
-func setup(tb testing.TB, timeout ...time.Duration) context.Context {
+func TestBeginHook(t *testing.T) {
+	var called bool
+	ctx := setup1(t)
+	tx := setupTx(t, ctx, 1, stdent.BeginHook(func(ctx context.Context, sql strings.Builder, tx stdent.Tx) error {
+		called = true
+		return nil
+	}))
+
+	var rows entsql.Rows
+	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
+	require.NoError(t, err)
+	require.NoError(t, rows.Close())
+	require.True(t, called)
+}
+
+func setup1(tb testing.TB, timeout ...time.Duration) context.Context {
 	var ctx context.Context
 	var cancel func()
 	if len(timeout) > 0 {
@@ -79,7 +90,7 @@ func setup(tb testing.TB, timeout ...time.Duration) context.Context {
 	return ctx
 }
 
-func setupTx(t *testing.T, ctx context.Context, maxCost float64) entdialect.Tx {
+func setupTx(t *testing.T, ctx context.Context, maxCost float64, opts ...stdent.DriverOption) entdialect.Tx {
 	t.Helper()
 
 	db := pgtestdb.New(t, pgtestdb.Config{
@@ -91,12 +102,11 @@ func setupTx(t *testing.T, ctx context.Context, maxCost float64) entdialect.Tx {
 		Port:       "5440",
 	}, pgtestdb.NoopMigrator{})
 
+	opts = append(opts, stdent.DiscourageSequentialScans(),
+		stdent.TestForMaxQueryPlanCosts(maxCost))
+
 	baseDrv := entsql.NewDriver(entdialect.Postgres, entsql.Conn{ExecQuerier: db})
-	saasDrv := stdentsaas.NewDriver(baseDrv,
-		stdentsaas.DiscourageSequentialScans(),
-		stdentsaas.TestForMaxQueryPlanCosts(maxCost),
-		stdentsaas.AuthenticatedUserSetting("auth.user_id"),
-		stdentsaas.AuthenticatedOrganizationsSetting("auth.organizations"))
+	saasDrv := stdent.NewDriver(baseDrv, opts...)
 
 	tx, err := saasDrv.Tx(ctx)
 	require.NoError(t, err)

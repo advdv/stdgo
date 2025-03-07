@@ -1,4 +1,4 @@
-package stdentsaas
+package stdent
 
 import (
 	"context"
@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Tx wraps a Ent transaction to provide us with the ability to hook any sql
+// WTx wraps a Ent transaction to provide us with the ability to hook any sql
 // before it's being executed. In our case we ant to fail tests when the
 // to-be-executed query plan has a cost that is too high.
-type Tx struct {
+type WTx struct {
 	entdialect.Tx
 	MaxQueryPlanCosts float64
 	execQueryLogLevel zapcore.Level
@@ -23,7 +23,7 @@ type Tx struct {
 
 // Exec executes a query that does not return records. For example, in SQL, INSERT or UPDATE.
 // It scans the result into the pointer v. For SQL drivers, it is dialect/sql.Result.
-func (tx Tx) Exec(ctx context.Context, query string, args, v any) error {
+func (tx WTx) Exec(ctx context.Context, query string, args, v any) error {
 	stdctx.Log(ctx).Log(tx.execQueryLogLevel, "exec", zap.String("sql", query), zap.Any("args", args))
 
 	return tx.do(ctx, query, args, v, tx.Tx.Exec)
@@ -31,13 +31,13 @@ func (tx Tx) Exec(ctx context.Context, query string, args, v any) error {
 
 // Query executes a query that returns rows, typically a SELECT in SQL.
 // It scans the result into the pointer v. For SQL drivers, it is *dialect/sql.Rows.
-func (tx Tx) Query(ctx context.Context, query string, args, v any) error {
+func (tx WTx) Query(ctx context.Context, query string, args, v any) error {
 	stdctx.Log(ctx).Log(tx.execQueryLogLevel, "query", zap.String("sql", query), zap.Any("args", args))
 
 	return tx.do(ctx, query, args, v, tx.Tx.Query)
 }
 
-func (tx Tx) do(
+func (tx WTx) do(
 	ctx context.Context, query string, args, val any,
 	dof func(ctx context.Context, query string, args, v any) error,
 ) error {

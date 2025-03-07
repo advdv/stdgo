@@ -1,10 +1,8 @@
-// Package stdentsaas provides re-usable SaaS code using Ent as the ORM.
-package stdentsaas
+package stdent
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -14,30 +12,6 @@ import (
 )
 
 type DriverOption func(*Driver)
-
-// AuthenticatedUserSetting configures the transaction-scoped postgres setting
-// that will cary which user is authenticated for.
-func AuthenticatedUserSetting(s string) DriverOption {
-	return func(d *Driver) {
-		d.userSetting = s
-	}
-}
-
-// AuthenticatedOrganizationsSetting configures the transaction-scoped postgres setting
-// that will cary which organizations the user is autthenticated for.
-func AuthenticatedOrganizationsSetting(s string) DriverOption {
-	return func(d *Driver) {
-		d.orgsSetting = s
-	}
-}
-
-// AnonymousUserID configures the id that will be used in the setting when the user
-// is not authenticated.
-func AnonymousUserID(s string) DriverOption {
-	return func(d *Driver) {
-		d.anonUserID = s
-	}
-}
 
 // TestForMaxQueryPlanCosts will enable EXPLAIN on every query that is executed with
 // the driver and fail when the cost of the resulting query is above the maximum. Together
@@ -65,19 +39,27 @@ func TxExecQueryLoggingLevel(v zapcore.Level) DriverOption {
 	}
 }
 
+// BeginHook may be called right when the transaction has been setup. This allows injecting custom settings into
+// transaction. For example to facilitate role switching and Row-level security. This can either be performed by
+// extending the sql statement that is already being performed (perferred for simple operations). Or using the
+// transaction concretely.
+func BeginHook(v func(ctx context.Context, sql strings.Builder, tx Tx) error) DriverOption {
+	return func(d *Driver) {
+		d.beginHook = v
+	}
+}
+
 // Driver is an opionated Ent driver that wraps a base driver but only allows interactions
 // with the database to be done through a transaction with specific isolation
-// properties and auth settings applied properly.
+// properties and hooking any sql being executed.
 type Driver struct {
 	entdialect.Driver
 
-	userSetting         string
-	orgsSetting         string
-	anonUserID          string
 	timeoutExtension    time.Duration
 	maxQueryPlanCosts   float64
 	discourageSeqScans  bool
 	txExecQueryLogLevel zapcore.Level
+	beginHook           func(context.Context, strings.Builder, Tx) error
 }
 
 // NewDriver inits the driver.
@@ -86,8 +68,7 @@ func NewDriver(
 	opts ...DriverOption,
 ) *Driver {
 	drv := &Driver{Driver: base}
-	AuthenticatedUserSetting("auth.user_id")(drv)
-	AuthenticatedOrganizationsSetting("auth.organizations")(drv)
+	BeginHook(func(context.Context, strings.Builder, Tx) error { return nil })(drv)
 
 	for _, opt := range opts {
 		opt(drv)
@@ -143,30 +124,18 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("failed to setup tx, rolled back: %w", err)
 	}
 
-	return Tx{tx, d.maxQueryPlanCosts, d.txExecQueryLogLevel}, nil
+	return WTx{tx, d.maxQueryPlanCosts, d.txExecQueryLogLevel}, nil
 }
 
 // setupTx preforms shared transaction setup.
 func (d Driver) setupTx(ctx context.Context, tx entdialect.Tx) error {
-	accsOrgs, ok := AuthenticatedOrganizations(ctx)
-	if !ok {
-		accsOrgs = []OrganizationRole{} // so the setting is never 'null'
-	}
-
-	jsond, err := json.Marshal(accsOrgs)
-	if err != nil {
-		return fmt.Errorf("failed to marshal authenticated_organizations json: %w", err)
-	}
-
-	accsUserID, ok := AuthenticatedUser(ctx)
-	if !ok {
-		accsUserID = d.anonUserID
-	}
-
 	// set transaction-local settings to be used for authorization (policies)
 	var sql strings.Builder
-	sql.WriteString(fmt.Sprintf(`SET LOCAL %s = '%s';`, d.userSetting, accsUserID))
-	sql.WriteString(fmt.Sprintf(`SET LOCAL %s = '%s';`, d.orgsSetting, string(jsond)))
+
+	// call any custom hook for beginning the transaction.
+	if err := d.beginHook(ctx, sql, tx); err != nil {
+		return fmt.Errorf("setup hook: %w", err)
+	}
 
 	// if the context has a deadline we limit the transaction to that timeout.
 	dl, ok := ctx.Deadline()
