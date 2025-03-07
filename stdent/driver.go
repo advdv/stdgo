@@ -43,7 +43,7 @@ func TxExecQueryLoggingLevel(v zapcore.Level) DriverOption {
 // transaction. For example to facilitate role switching and Row-level security. This can either be performed by
 // extending the sql statement that is already being performed (perferred for simple operations). Or using the
 // transaction concretely.
-func BeginHook(v func(ctx context.Context, sql strings.Builder, tx Tx) error) DriverOption {
+func BeginHook(v func(ctx context.Context, sql strings.Builder, tx Tx) (strings.Builder, error)) DriverOption {
 	return func(d *Driver) {
 		d.beginHook = v
 	}
@@ -59,7 +59,7 @@ type Driver struct {
 	maxQueryPlanCosts   float64
 	discourageSeqScans  bool
 	txExecQueryLogLevel zapcore.Level
-	beginHook           func(context.Context, strings.Builder, Tx) error
+	beginHook           func(context.Context, strings.Builder, Tx) (strings.Builder, error)
 }
 
 // NewDriver inits the driver.
@@ -68,7 +68,7 @@ func NewDriver(
 	opts ...DriverOption,
 ) *Driver {
 	drv := &Driver{Driver: base}
-	BeginHook(func(context.Context, strings.Builder, Tx) error { return nil })(drv)
+	BeginHook(func(_ context.Context, b strings.Builder, _ Tx) (strings.Builder, error) { return b, nil })(drv)
 
 	for _, opt := range opts {
 		opt(drv)
@@ -128,12 +128,12 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 }
 
 // setupTx preforms shared transaction setup.
-func (d Driver) setupTx(ctx context.Context, tx entdialect.Tx) error {
+func (d Driver) setupTx(ctx context.Context, tx entdialect.Tx) (err error) {
 	// set transaction-local settings to be used for authorization (policies)
 	var sql strings.Builder
 
 	// call any custom hook for beginning the transaction.
-	if err := d.beginHook(ctx, sql, tx); err != nil {
+	if sql, err = d.beginHook(ctx, sql, tx); err != nil {
 		return fmt.Errorf("setup hook: %w", err)
 	}
 
