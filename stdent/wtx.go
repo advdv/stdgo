@@ -77,11 +77,20 @@ func (tx WTx) do(
 		return fmt.Errorf("failed to unmarshal query plan json: %w", err)
 	}
 
-	for _, plan := range expl {
-		if plan.Plan.TotalCost > tx.MaxQueryPlanCosts {
-			return fmt.Errorf("query plan cost exceeds maximum %v > %v, query: %s, plan: %s",
-				plan.Plan.TotalCost, tx.MaxQueryPlanCosts, query, explJSON)
-		}
+	var cumCostOfAllPlans float64
+	for i, plan := range expl {
+		stdctx.Log(ctx).Log(tx.execQueryLogLevel, "explained query plan",
+			zap.Int("plan_idx", i),
+			zap.String("plan_node_type", plan.Plan.NodeType),
+			zap.String("plan_operation", plan.Plan.NodeType),
+			zap.Float64("plan_total_cost", plan.Plan.TotalCost))
+
+		cumCostOfAllPlans += plan.Plan.TotalCost
+	}
+
+	if cumCostOfAllPlans > tx.MaxQueryPlanCosts {
+		return fmt.Errorf("query plan cost exceeds maximum %v > %v, query: %s, plan: %s",
+			cumCostOfAllPlans, tx.MaxQueryPlanCosts, query, explJSON)
 	}
 
 	// finally, run the actual query

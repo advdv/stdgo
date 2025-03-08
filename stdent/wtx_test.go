@@ -35,7 +35,7 @@ func TestTxExceedMaxCostsQuery(t *testing.T) {
 	tx := setupTx(t, ctx, 0.00001)
 
 	var rows entsql.Rows
-	err := tx.Query(ctx, `SELECT current_setting('auth.user_id')`, []any{}, &rows)
+	err := tx.Query(ctx, `SELECT 42`, []any{}, &rows)
 	require.ErrorContains(t, err, "plan cost exceeds maximum")
 }
 
@@ -63,7 +63,7 @@ func TestBeginHook(t *testing.T) {
 	var called bool
 	ctx := setup1(t)
 	tx := setupTx(t, ctx, 1, stdent.BeginHook(func(
-		ctx context.Context, sql *strings.Builder, tx stdent.Tx,
+		ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier,
 	) (*strings.Builder, error) {
 		called = true
 

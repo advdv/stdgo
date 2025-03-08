@@ -43,7 +43,9 @@ func TxExecQueryLoggingLevel(v zapcore.Level) DriverOption {
 // transaction. For example to facilitate role switching and Row-level security. This can either be performed by
 // extending the sql statement that is already being performed (perferred for simple operations). Or using the
 // transaction concretely.
-func BeginHook(v func(ctx context.Context, sql *strings.Builder, tx Tx) (*strings.Builder, error)) DriverOption {
+func BeginHook(v func(
+	ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier) (*strings.Builder, error),
+) DriverOption {
 	return func(d *Driver) {
 		d.beginHook = v
 	}
@@ -59,7 +61,7 @@ type Driver struct {
 	maxQueryPlanCosts   float64
 	discourageSeqScans  bool
 	txExecQueryLogLevel zapcore.Level
-	beginHook           func(context.Context, *strings.Builder, Tx) (*strings.Builder, error)
+	beginHook           func(context.Context, *strings.Builder, entdialect.ExecQuerier) (*strings.Builder, error)
 }
 
 // NewDriver inits the driver.
@@ -68,7 +70,9 @@ func NewDriver(
 	opts ...DriverOption,
 ) *Driver {
 	drv := &Driver{Driver: base}
-	BeginHook(func(_ context.Context, b *strings.Builder, _ Tx) (*strings.Builder, error) { return b, nil })(drv)
+	BeginHook(func(_ context.Context, b *strings.Builder, _ entdialect.ExecQuerier) (*strings.Builder, error) {
+		return b, nil
+	})(drv)
 
 	for _, opt := range opts {
 		opt(drv)
