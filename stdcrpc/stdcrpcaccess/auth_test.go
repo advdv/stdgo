@@ -1,6 +1,7 @@
 package stdcrpcaccess_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -18,8 +19,6 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
-
-func permissionToProcedure(s string, _ int) string { return s }
 
 func TestCheckAuth(t *testing.T) {
 	tsrv := stdcrpcaccess.FixedKeyServer()
@@ -101,15 +100,15 @@ func TestCheckAuth(t *testing.T) {
 			core, obs := observer.New(zapcore.DebugLevel)
 			logs := zap.New(core)
 
-			ac := stdcrpcaccess.New(tsrv.URL, permissionToProcedure)
+			ac := stdcrpcaccess.New[authInfo](tsrv.URL)
 			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
 
 			ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]any{
-					"permissions": stdcrpcaccess.PermissionsFromContext(r.Context()),
-					"role":        stdcrpcaccess.RoleFromContext(r.Context()),
+					"permissions": permissionsFromContext(r.Context()),
+					"role":        roleFromContext(r.Context()),
 				})
 			})).ServeHTTP(rec, req)
 
@@ -124,14 +123,14 @@ func TestCheckAuth(t *testing.T) {
 
 func TestWithHTTPClient(t *testing.T) {
 	tsrv := stdcrpcaccess.FixedKeyServer()
-	ac := stdcrpcaccess.New(tsrv.URL, permissionToProcedure)
+	ac := stdcrpcaccess.New[authInfo](tsrv.URL)
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
 	innter := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{
-			"permissions": stdcrpcaccess.PermissionsFromContext(r.Context()),
-			"role":        stdcrpcaccess.RoleFromContext(r.Context()),
+			"permissions": permissionsFromContext(r.Context()),
+			"role":        roleFromContext(r.Context()),
 		})
 	}))
 
@@ -156,4 +155,45 @@ func TestWithHTTPClient(t *testing.T) {
 	body := stdlo.Must1(io.ReadAll(resp.Body))
 	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role"}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+// authInfo describes what is passed between middlewares as result of authentication.
+type authInfo struct {
+	Role        string   `mapstructure:"role"`
+	Permissions []string `mapstructure:"permissions"`
+}
+
+// ProcedurePermissions returns the permissions in the format of Connect RPC procedures.
+func (info authInfo) ProcedurePermissions() []string {
+	return stdlo.Map(info.Permissions, func(s string, _ int) string { return s })
+}
+
+// DecorateContext is called after the middleware has authenticated.
+func (info authInfo) DecorateContext(ctx context.Context) context.Context {
+	ctx = context.WithValue(ctx, ctxKey("procedure_permissions"), info.ProcedurePermissions())
+	ctx = context.WithValue(ctx, ctxKey("role"), info.Role)
+	return ctx
+}
+
+// ctxKey scopes the context information.
+type ctxKey string
+
+// permissionsFromContext returns permissions from the context.
+func permissionsFromContext(ctx context.Context) []string {
+	val, ok := ctx.Value(ctxKey("procedure_permissions")).([]string)
+	if !ok {
+		panic("stdcrpcaccess: no procedure permissions in context")
+	}
+
+	return val
+}
+
+// roleFromContext returns permissions from the context.
+func roleFromContext(ctx context.Context) string {
+	val, ok := ctx.Value(ctxKey("role")).(string)
+	if !ok {
+		panic("stdcrpcaccess: no role in context")
+	}
+
+	return val
 }
