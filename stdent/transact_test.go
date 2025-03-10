@@ -125,6 +125,18 @@ func TestRegularRollback(t *testing.T) {
 	require.Equal(t, int64(0), client.numCommits)
 }
 
+func TestAlreadyDoneIsOK(t *testing.T) {
+	ctx, client, txr := setup(t)
+
+	require.NoError(t, stdent.Transact0(ctx, txr, func(ctx context.Context, tx *mockTx1) error {
+		tx.Rollback()
+		return nil
+	}), "some error")
+
+	require.Equal(t, int64(2), client.numRollbacks)
+	require.Equal(t, int64(1), client.numCommits)
+}
+
 func TestGoexitRollback(t *testing.T) {
 	ctx, client, txr := setup(t)
 	done := make(chan struct{})

@@ -127,6 +127,12 @@ func Transact1[T Tx, U any](
 			}
 
 			if err := tx.Commit(); err != nil {
+				// In cases the fnc logic concludes the transaction by itself we don't consider that
+				// an error since the job was done either way.
+				if errors.Is(err, sql.ErrTxDone) {
+					return res, nil
+				}
+
 				return res, fmt.Errorf("commit transaction: %w", err)
 			}
 
