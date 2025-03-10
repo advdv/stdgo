@@ -9,7 +9,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 	"go.uber.org/fx"
 )
 
@@ -53,7 +52,7 @@ func FixedKeyServer() *httptest.Server {
 }
 
 // SignToken signs a valid JWT against a well-known private key for testing.
-func SignToken(tok openid.Token) (string, error) {
+func SignToken(tok jwt.Token) (string, error) {
 	jwks, err := jwk.Parse(jwksData)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse jwk: %w", err)
@@ -77,7 +76,7 @@ type withTestToken func(*http.Request) (*http.Response, error)
 func (f withTestToken) Do(r *http.Request) (*http.Response, error) { return f(r) }
 
 // WithSignedToken is a http client middleware that always adds a valid (self signed) token for testing.
-func WithSignedToken(base connect.HTTPClient, createToken func(r *http.Request) openid.Token) connect.HTTPClient {
+func WithSignedToken(base connect.HTTPClient, createToken func(r *http.Request) jwt.Token) connect.HTTPClient {
 	return withTestToken(func(r *http.Request) (*http.Response, error) {
 		token, err := SignToken(createToken(r))
 		if err != nil {

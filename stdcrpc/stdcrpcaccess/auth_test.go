@@ -13,7 +13,7 @@ import (
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdlo"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,10 +23,10 @@ import (
 func TestCheckAuth(t *testing.T) {
 	tsrv := stdcrpcaccess.FixedKeyServer()
 
-	tok := openid.New()
-	tok.Set("permissions", []string{"/a/b", "/x/y"})
-	tok.Set("role", "some-role")
-	validToken1, err := stdcrpcaccess.SignToken(tok)
+	token1 := stdlo.Must1(jwt.NewBuilder().Subject("foo|user-1").Build())
+	token1.Set("permissions", []string{"/a/b", "/x/y"})
+	token1.Set("role", "some-role")
+	validToken1, err := stdcrpcaccess.SignToken(token1)
 	require.NoError(t, err)
 
 	for _, tt := range []struct {
@@ -86,12 +86,23 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok", "/a/b", http.StatusOK,
-			`{"permissions":["/a/b", "/x/y"],"role":"some-role"}`,
+			`{"permissions":["/a/b", "/x/y"],"role":"some-role","identities":["foo|user-1"]}`,
 			func(h http.Header) {
 				h.Set("X-Amzn-Oidc-Accesstoken", validToken1)
 			},
 			func(t *testing.T, obs *observer.ObservedLogs) {
 				t.Helper()
+			},
+		},
+
+		{
+			"ok-anonymous", "/p/public", http.StatusOK,
+			`{"permissions":["/p/public"],"role":"anon", "identities":null}`,
+			func(h http.Header) {
+			},
+			func(t *testing.T, obs *observer.ObservedLogs) {
+				t.Helper()
+				require.Len(t, obs.FilterMessage("authorizing anonymous access").All(), 1)
 			},
 		},
 	} {
@@ -106,9 +117,12 @@ func TestCheckAuth(t *testing.T) {
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
 
 			ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				info := infoFromContext(r.Context())
+
 				json.NewEncoder(w).Encode(map[string]any{
-					"permissions": permissionsFromContext(r.Context()),
-					"role":        roleFromContext(r.Context()),
+					"identities":  info.Identities,
+					"permissions": info.Permissions,
+					"role":        info.Role,
 				})
 			})).ServeHTTP(rec, req)
 
@@ -128,9 +142,11 @@ func TestWithHTTPClient(t *testing.T) {
 	logs := zap.New(zc)
 
 	innter := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		info := infoFromContext(r.Context())
 		json.NewEncoder(w).Encode(map[string]any{
-			"permissions": permissionsFromContext(r.Context()),
-			"role":        roleFromContext(r.Context()),
+			"identities":  info.Identities,
+			"permissions": info.Permissions,
+			"role":        info.Role,
 		})
 	}))
 
@@ -143,22 +159,23 @@ func TestWithHTTPClient(t *testing.T) {
 	ctx := t.Context()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/a/b", nil)
 
-	tok := openid.New()
+	tok := stdlo.Must1(jwt.NewBuilder().Subject("foo-1").Build())
 	tok.Set("permissions", []string{"/a/b"})
 	tok.Set("role", "some-role")
 
-	cln := stdcrpcaccess.WithSignedToken(srv.Client(), func(r *http.Request) openid.Token { return tok })
+	cln := stdcrpcaccess.WithSignedToken(srv.Client(), func(r *http.Request) jwt.Token { return tok })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
 
 	body := stdlo.Must1(io.ReadAll(resp.Body))
-	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role"}`, string(body))
+	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role", "identities":["foo-1"]}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 // authInfo describes what is passed between middlewares as result of authentication.
 type authInfo struct {
+	Identities  []string
 	Role        string   `mapstructure:"role"`
 	Permissions []string `mapstructure:"permissions"`
 }
@@ -170,29 +187,34 @@ func (info authInfo) ProcedurePermissions() []string {
 
 // DecorateContext is called after the middleware has authenticated.
 func (info authInfo) DecorateContext(ctx context.Context) context.Context {
-	ctx = context.WithValue(ctx, ctxKey("procedure_permissions"), info.ProcedurePermissions())
-	ctx = context.WithValue(ctx, ctxKey("role"), info.Role)
+	ctx = context.WithValue(ctx, ctxKey("info"), info)
 	return ctx
+}
+
+func (info authInfo) AsAnonymous(_ context.Context, r *http.Request) (authInfo, bool) {
+	if r.URL.Path == "/p/public" {
+		info.Role = "anon"
+		info.Permissions = []string{"/p/public"}
+
+		return info, true
+	}
+
+	return info, false
+}
+
+func (info authInfo) ReadAccessToken(_ context.Context, tok jwt.Token) (authInfo, error) {
+	info.Identities = append(info.Identities, tok.Subject())
+
+	return info, nil
 }
 
 // ctxKey scopes the context information.
 type ctxKey string
 
-// permissionsFromContext returns permissions from the context.
-func permissionsFromContext(ctx context.Context) []string {
-	val, ok := ctx.Value(ctxKey("procedure_permissions")).([]string)
+func infoFromContext(ctx context.Context) authInfo {
+	val, ok := ctx.Value(ctxKey("info")).(authInfo)
 	if !ok {
-		panic("stdcrpcaccess: no procedure permissions in context")
-	}
-
-	return val
-}
-
-// roleFromContext returns permissions from the context.
-func roleFromContext(ctx context.Context) string {
-	val, ok := ctx.Value(ctxKey("role")).(string)
-	if !ok {
-		panic("stdcrpcaccess: no role in context")
+		panic("stdcrpcaccess: no auth info in context")
 	}
 
 	return val

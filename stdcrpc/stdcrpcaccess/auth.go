@@ -13,18 +13,25 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 	"go.uber.org/zap"
 )
 
 // Claims constrains the type that will hold authentication claims.
-type Claims interface {
+type Claims[T any] interface {
+	// ProcedurePermissions is implemented to turn the claims into permissions for connect RPC procedure annotation.
 	ProcedurePermissions() []string
+	// ReadAccessToken allows the implementation to take information from the access token. This is called
+	// AFTER custom claims have been read from the access token.
+	ReadAccessToken(ctx context.Context, tok jwt.Token) (T, error)
+	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
 	DecorateContext(ctx context.Context) context.Context
+	// AsAnonymous returns a copy of the info that is usuable to the application for anonymous access. If false is
+	// returned anonymous access is not allowed.
+	AsAnonymous(ctx context.Context, req *http.Request) (T, bool)
 }
 
 // AccessControl implements a simple access control scheme.
-type AccessControl[T Claims] struct {
+type AccessControl[T Claims[T]] struct {
 	authn       *authn.Middleware
 	jwkCache    *jwk.Cache
 	jwkEndpoint string
@@ -32,11 +39,11 @@ type AccessControl[T Claims] struct {
 }
 
 // New inits the access control.
-func New[T Claims](jwkEndpoint string) *AccessControl[T] {
+func New[T Claims[T]](jwkEndpoint string) *AccessControl[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ac := &AccessControl[T]{stop: cancel}
-	ac.authn = authn.NewMiddleware(ac.checkAuth)
+	ac.authn = authn.NewMiddleware(ac.checkAuthN)
 	ac.jwkCache = jwk.NewCache(ctx)
 	ac.jwkEndpoint = jwkEndpoint
 
@@ -50,12 +57,22 @@ func New[T Claims](jwkEndpoint string) *AccessControl[T] {
 // Close cancels the lifecycle context.
 func (ac *AccessControl[T]) Close(context.Context) error { ac.stop(); return nil }
 
-// checkAuth implements the core checkAuth logic.
-func (ac *AccessControl[T]) checkAuth(ctx context.Context, req *http.Request) (any, error) {
+// checkAuthN implements the core checkAuthN logic.
+func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (any, error) {
+	var info T
+
 	logs := stdctx.Log(ctx)
 	accessToken, ok := authn.BearerToken(req)
 	if !ok {
-		return nil, authn.Errorf("no token")
+		info, allow := info.AsAnonymous(ctx, req)
+		if !allow {
+			return nil, authn.Errorf("no token")
+		}
+
+		allowedProcedures := info.ProcedurePermissions()
+		logs.Info("authorizing anonymous access", zap.Strings("allowed_procedures", allowedProcedures))
+
+		return info, ac.checkAuthZ(logs, allowedProcedures, req)
 	}
 
 	logs.Info("authenticating token", zap.String("token", accessToken))
@@ -65,27 +82,40 @@ func (ac *AccessControl[T]) checkAuth(ctx context.Context, req *http.Request) (a
 		return nil, fmt.Errorf("unable to lookup JWKS: %w", err)
 	}
 
-	tok := openid.New()
+	tok := jwt.New()
 	if _, err = jwt.ParseString(accessToken, jwt.WithKeySet(keys), jwt.WithToken(tok)); err != nil {
 		logs.Info("client provided invalid token", zap.Error(err))
 		return nil, authn.Errorf("invalid token")
 	}
-
-	var info T
 
 	claimMap := tok.PrivateClaims()
 	if err := mapstructure.Decode(claimMap, &info); err != nil {
 		return nil, authn.Errorf("failed to decode claims: %w", err)
 	}
 
+	info, err = info.ReadAccessToken(ctx, tok)
+	if err != nil {
+		return nil, authn.Errorf("read access token into auth info: %w", err)
+	}
+
 	allowedProcedures := info.ProcedurePermissions()
 	logs.Info("authorizing token",
+		zap.String("subject", tok.Subject()),
 		zap.Any("all_claims", claimMap),
 		zap.Strings("allowed_procedures", allowedProcedures))
 
+	return info, ac.checkAuthZ(logs, allowedProcedures, req)
+}
+
+// checkAuthZ implements our simple authorization logic.
+func (ac *AccessControl[T]) checkAuthZ(
+	logs *zap.Logger,
+	allowedProcedures []string,
+	req *http.Request,
+) error {
 	currentProcedure, ok := authn.InferProcedure(req.URL)
 	if !ok {
-		return nil, authzErrorf("unable to determine RPC procedure")
+		return authzErrorf("unable to determine RPC procedure")
 	}
 
 	if !slices.Contains(allowedProcedures, currentProcedure) {
@@ -93,10 +123,10 @@ func (ac *AccessControl[T]) checkAuth(ctx context.Context, req *http.Request) (a
 			zap.String("current_procedure", currentProcedure),
 			zap.Strings("allowed_procedures", allowedProcedures))
 
-		return nil, authzErrorf("procedure not allowed")
+		return authzErrorf("procedure not allowed")
 	}
 
-	return info, nil
+	return nil
 }
 
 func authzErrorf(format string, a ...any) error {
