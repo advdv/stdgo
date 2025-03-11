@@ -1,5 +1,5 @@
-// Package crpcsnap provides snapshot testing for Connect RPC response.
-package crpcsnap
+// Package stdcrpcsnap provides snapshot testing for Connect RPC response.
+package stdcrpcsnap
 
 import (
 	"errors"
