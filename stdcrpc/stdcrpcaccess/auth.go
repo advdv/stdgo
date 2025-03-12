@@ -23,6 +23,9 @@ type Claims[T any] interface {
 	// ReadAccessToken allows the implementation to take information from the access token. This is called
 	// AFTER custom claims have been read from the access token.
 	ReadAccessToken(ctx context.Context, tok jwt.Token) (T, error)
+	// ToAccessToken describes how an access token is created from the auth information. This is used for the signing
+	// procedure.
+	ToAccessToken(ctx context.Context) (jwt.Token, error)
 	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
 	DecorateContext(ctx context.Context) context.Context
 	// AsAnonymous returns a copy of the info that is usuable to the application for anonymous access. If false is
@@ -32,26 +35,54 @@ type Claims[T any] interface {
 
 // AccessControl implements a simple access control scheme.
 type AccessControl[T Claims[T]] struct {
-	authn       *authn.Middleware
-	jwkCache    *jwk.Cache
-	jwkEndpoint string
-	stop        func()
+	authn   *authn.Middleware
+	backend struct {
+		jwkCache    *jwk.Cache
+		jwkEndpoint string
+	}
+
+	signing jwk.Set
+	stop    func()
 }
 
 // New inits the access control.
-func New[T Claims[T]](back AuthBackend) *AccessControl[T] {
+func New[T Claims[T]](back AuthBackend, signing jwk.Set) *AccessControl[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ac := &AccessControl[T]{stop: cancel}
+	ac := &AccessControl[T]{stop: cancel, signing: signing}
 	ac.authn = authn.NewMiddleware(ac.checkAuthN)
-	ac.jwkCache = jwk.NewCache(ctx)
-	ac.jwkEndpoint = back.JWKSEndpoint()
+	ac.backend.jwkCache = jwk.NewCache(ctx)
+	ac.backend.jwkEndpoint = back.JWKSEndpoint()
 
-	if err := ac.jwkCache.Register(ac.jwkEndpoint); err != nil {
+	if err := ac.backend.jwkCache.Register(ac.backend.jwkEndpoint); err != nil {
 		panic("rpcaccess: failed to register jwk cache endpoint: " + err.Error())
 	}
 
 	return ac
+}
+
+// Sign turns auth information T into an access token that is accepted by auth checks.
+func (ac *AccessControl[T]) Sign(
+	ctx context.Context,
+	claims T,
+	signingKeyID string,
+) ([]byte, error) {
+	tok, err := claims.ToAccessToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("turn into access token: %w", err)
+	}
+
+	key, ok := ac.signing.LookupKeyID(signingKeyID)
+	if !ok {
+		return nil, fmt.Errorf("no key with id '%s'", signingKeyID)
+	}
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(key.Algorithm(), key))
+	if err != nil {
+		return nil, fmt.Errorf("signing: %w", err)
+	}
+
+	return signed, nil
 }
 
 // Close cancels the lifecycle context.
@@ -77,13 +108,17 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 
 	logs.Info("authenticating token", zap.String("token", accessToken))
 
-	keys, err := ac.jwkCache.Get(ctx, ac.jwkEndpoint)
+	keys, err := ac.backend.jwkCache.Get(ctx, ac.backend.jwkEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("unable to lookup JWKS: %w", err)
 	}
 
 	tok := jwt.New()
-	if _, err = jwt.ParseString(accessToken, jwt.WithKeySet(keys), jwt.WithToken(tok)); err != nil {
+	if _, err = jwt.ParseString(accessToken,
+		jwt.WithKeySet(keys),       // from our auth backend
+		jwt.WithKeySet(ac.signing), // from our own signing set
+		jwt.WithToken(tok),
+	); err != nil {
 		logs.Info("client provided invalid token", zap.Error(err))
 		return nil, authn.Errorf("invalid token")
 	}

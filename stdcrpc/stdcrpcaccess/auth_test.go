@@ -13,6 +13,7 @@ import (
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdlo"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -20,13 +21,22 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-func TestCheckAuth(t *testing.T) {
-	tsrv := stdcrpcaccess.FixedKeyServer()
+//go:embed fixed_jwks.json
+var testJwksData []byte
 
-	token1 := stdlo.Must1(jwt.NewBuilder().Subject("foo|user-1").Build())
-	token1.Set("permissions", []string{"/a/b", "/x/y"})
-	token1.Set("role", "some-role")
-	validToken1, err := stdcrpcaccess.SignToken(token1)
+func TestCheckAuth(t *testing.T) {
+	tsrv := stdcrpcaccess.NewTestAuthBackend()
+
+	info := authInfo{
+		PrimaryIdentity: "foo|user-1",
+		Permissions:     []string{"/a/b", "/x/y"},
+		Role:            "some-role",
+	}
+
+	token1, err := info.ToAccessToken(t.Context())
+	require.NoError(t, err)
+
+	validToken1, err := stdcrpcaccess.SignTestToken(token1)
 	require.NoError(t, err)
 
 	for _, tt := range []struct {
@@ -86,7 +96,7 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok", "/a/b", http.StatusOK,
-			`{"permissions":["/a/b", "/x/y"],"role":"some-role","identities":["foo|user-1"]}`,
+			`{"permissions":["/a/b", "/x/y"],"role":"some-role","primary_identity":"foo|user-1"}`,
 			func(h http.Header) {
 				h.Set("X-Amzn-Oidc-Accesstoken", validToken1)
 			},
@@ -97,7 +107,7 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok-anonymous", "/p/public", http.StatusOK,
-			`{"permissions":["/p/public"],"role":"anon", "identities":null}`,
+			`{"permissions":["/p/public"],"role":"anon", "primary_identity":""}`,
 			func(h http.Header) {
 			},
 			func(t *testing.T, obs *observer.ObservedLogs) {
@@ -111,7 +121,7 @@ func TestCheckAuth(t *testing.T) {
 			core, obs := observer.New(zapcore.DebugLevel)
 			logs := zap.New(core)
 
-			ac := stdcrpcaccess.New[authInfo](tsrv)
+			ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet())
 			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
@@ -120,9 +130,9 @@ func TestCheckAuth(t *testing.T) {
 				info := infoFromContext(r.Context())
 
 				json.NewEncoder(w).Encode(map[string]any{
-					"identities":  info.Identities,
-					"permissions": info.Permissions,
-					"role":        info.Role,
+					"primary_identity": info.PrimaryIdentity,
+					"permissions":      info.Permissions,
+					"role":             info.Role,
 				})
 			})).ServeHTTP(rec, req)
 
@@ -135,18 +145,40 @@ func TestCheckAuth(t *testing.T) {
 	}
 }
 
+func TestSigning(t *testing.T) {
+	keys, err := jwk.Parse(testJwksData)
+	require.NoError(t, err)
+
+	tsrv := stdcrpcaccess.NewTestAuthBackend()
+	ac := stdcrpcaccess.New[authInfo](tsrv, keys)
+	zc, _ := observer.New(zap.DebugLevel)
+
+	logs := zap.New(zc)
+	ctx := stdctx.WithLogger(t.Context(), logs)
+
+	token, err := ac.Sign(ctx, authInfo{Permissions: []string{"/a/b"}}, "key1")
+	require.NoError(t, err)
+
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
+	req.Header.Set("Authorization", "Bearer "+string(token))
+
+	ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+}
+
 func TestWithHTTPClient(t *testing.T) {
-	tsrv := stdcrpcaccess.FixedKeyServer()
-	ac := stdcrpcaccess.New[authInfo](tsrv)
+	tsrv := stdcrpcaccess.NewTestAuthBackend()
+	ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet())
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
 	innter := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		info := infoFromContext(r.Context())
 		json.NewEncoder(w).Encode(map[string]any{
-			"identities":  info.Identities,
-			"permissions": info.Permissions,
-			"role":        info.Role,
+			"primary_identity": info.PrimaryIdentity,
+			"permissions":      info.Permissions,
+			"role":             info.Role,
 		})
 	}))
 
@@ -159,25 +191,30 @@ func TestWithHTTPClient(t *testing.T) {
 	ctx := t.Context()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/a/b", nil)
 
-	tok := stdlo.Must1(jwt.NewBuilder().Subject("foo-1").Build())
-	tok.Set("permissions", []string{"/a/b"})
-	tok.Set("role", "some-role")
+	info := authInfo{
+		PrimaryIdentity: "foo-1",
+		Permissions:     []string{"/a/b"},
+		Role:            "some-role",
+	}
 
-	cln := stdcrpcaccess.WithSignedToken(srv.Client(), func(r *http.Request) jwt.Token { return tok })
+	token1, err := info.ToAccessToken(t.Context())
+	require.NoError(t, err)
+
+	cln := stdcrpcaccess.WithSignedTestToken(srv.Client(), func(r *http.Request) jwt.Token { return token1 })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
 
 	body := stdlo.Must1(io.ReadAll(resp.Body))
-	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role", "identities":["foo-1"]}`, string(body))
+	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role", "primary_identity":"foo-1"}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 // authInfo describes what is passed between middlewares as result of authentication.
 type authInfo struct {
-	Identities  []string
-	Role        string   `mapstructure:"role"`
-	Permissions []string `mapstructure:"permissions"`
+	PrimaryIdentity string
+	Role            string   `mapstructure:"role"`
+	Permissions     []string `mapstructure:"permissions"`
 }
 
 // ProcedurePermissions returns the permissions in the format of Connect RPC procedures.
@@ -203,9 +240,17 @@ func (info authInfo) AsAnonymous(_ context.Context, r *http.Request) (authInfo, 
 }
 
 func (info authInfo) ReadAccessToken(_ context.Context, tok jwt.Token) (authInfo, error) {
-	info.Identities = append(info.Identities, tok.Subject())
+	info.PrimaryIdentity = tok.Subject()
 
 	return info, nil
+}
+
+func (info authInfo) ToAccessToken(context.Context) (jwt.Token, error) {
+	return jwt.NewBuilder().
+		Subject(info.PrimaryIdentity).
+		Claim("role", info.Role).
+		Claim("permissions", info.Permissions).
+		Build()
 }
 
 // ctxKey scopes the context information.
