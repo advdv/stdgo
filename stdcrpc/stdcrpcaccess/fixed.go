@@ -45,10 +45,10 @@ func WithFixedAuthBackend() fx.Option {
 }
 
 // FixedKeyServer starts a server for testing that serves the key set.
-func FixedKeyServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+func FixedKeyServer() AuthBackend {
+	return &FixedAuthBackend{httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(jwksData)
-	}))
+	}))}
 }
 
 // SignToken signs a valid JWT against a well-known private key for testing.

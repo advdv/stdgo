@@ -39,15 +39,15 @@ type AccessControl[T Claims[T]] struct {
 }
 
 // New inits the access control.
-func New[T Claims[T]](jwkEndpoint string) *AccessControl[T] {
+func New[T Claims[T]](back AuthBackend) *AccessControl[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ac := &AccessControl[T]{stop: cancel}
 	ac.authn = authn.NewMiddleware(ac.checkAuthN)
 	ac.jwkCache = jwk.NewCache(ctx)
-	ac.jwkEndpoint = jwkEndpoint
+	ac.jwkEndpoint = back.JWKSEndpoint()
 
-	if err := ac.jwkCache.Register(jwkEndpoint); err != nil {
+	if err := ac.jwkCache.Register(ac.jwkEndpoint); err != nil {
 		panic("rpcaccess: failed to register jwk cache endpoint: " + err.Error())
 	}
 

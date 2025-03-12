@@ -111,7 +111,7 @@ func TestCheckAuth(t *testing.T) {
 			core, obs := observer.New(zapcore.DebugLevel)
 			logs := zap.New(core)
 
-			ac := stdcrpcaccess.New[authInfo](tsrv.URL)
+			ac := stdcrpcaccess.New[authInfo](tsrv)
 			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
@@ -137,7 +137,7 @@ func TestCheckAuth(t *testing.T) {
 
 func TestWithHTTPClient(t *testing.T) {
 	tsrv := stdcrpcaccess.FixedKeyServer()
-	ac := stdcrpcaccess.New[authInfo](tsrv.URL)
+	ac := stdcrpcaccess.New[authInfo](tsrv)
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
