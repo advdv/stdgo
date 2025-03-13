@@ -3,6 +3,7 @@ package stdcrpcaccess_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcaccess"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdlo"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/stretchr/testify/require"
@@ -313,15 +315,20 @@ func (authLogic) DecorateContext(ctx context.Context, info authInfo) context.Con
 	return info.DecorateContext(ctx)
 }
 
-func (authLogic) ReadAccessToken(ctx context.Context, info authInfo, tok jwt.Token) (authInfo, error) {
-	return info.ReadAccessToken(ctx, tok)
+func (authLogic) InitFromAccessToken(ctx context.Context, tok jwt.Token) (authInfo, error) {
+	info := authInfo{PrimaryIdentity: tok.Subject()}
+	if err := mapstructure.Decode(tok.PrivateClaims(), &info); err != nil {
+		return info, fmt.Errorf("decode private claims: %w", err)
+	}
+
+	return info, nil
 }
 
-func (authLogic) ToAccessTokenBuilder(ctx context.Context, info authInfo) (*jwt.Builder, error) {
+func (authLogic) ToPartialAccessToken(ctx context.Context, info authInfo) (*jwt.Builder, error) {
 	return info.ToAccessTokenBuilder(ctx)
 }
 
-func (authLogic) AsAnonymous(ctx context.Context, req *http.Request) (authInfo, bool) {
+func (authLogic) InitAsAnonymous(ctx context.Context, req *http.Request) (authInfo, bool) {
 	return authInfo{}.AsAnonymous(ctx, req)
 }
 
@@ -356,12 +363,6 @@ func (info authInfo) AsAnonymous(_ context.Context, r *http.Request) (authInfo, 
 	}
 
 	return info, false
-}
-
-func (info authInfo) ReadAccessToken(_ context.Context, tok jwt.Token) (authInfo, error) {
-	info.PrimaryIdentity = tok.Subject()
-
-	return info, nil
 }
 
 func (info authInfo) ToAccessTokenBuilder(context.Context) (*jwt.Builder, error) {

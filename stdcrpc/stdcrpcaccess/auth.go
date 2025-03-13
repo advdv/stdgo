@@ -11,7 +11,6 @@ import (
 	"connectrpc.com/authn"
 	"connectrpc.com/connect"
 	"github.com/advdv/stdgo/stdctx"
-	"github.com/go-viper/mapstructure/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"go.uber.org/zap"
@@ -23,17 +22,14 @@ type Logic[T any] interface {
 	ProcedurePermissions(info T) []string
 	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
 	DecorateContext(ctx context.Context, info T) context.Context
-	// ReadAccessToken allows the implementation to take information from the access token. This is called
-	// AFTER private claims have been decoded from the access token.
-	ReadAccessToken(ctx context.Context, info T, tok jwt.Token) (T, error)
-	// ToAccessTokenBuilder turns the token into an jwt that can be completed and build by shared code.
-	ToAccessTokenBuilder(ctx context.Context, info T) (*jwt.Builder, error)
-	// AsAnonymous returns a new copy of the info that is usuable to the application for anonymous access. If false is
-	// returned anonymous access is not allowed.
-	AsAnonymous(ctx context.Context, req *http.Request) (T, bool)
-	// PrivateClaimsDecodeTarget must return a pointer to the value that will be used as a decoding target for
-	// private claims.
-	PrivateClaimsDecodeTarget(info *T) any
+
+	// ToParialAccessToken turns the token into an jwt that can be completed and build by shared code.
+	ToPartialAccessToken(ctx context.Context, info T) (*jwt.Builder, error)
+
+	// InitAsAnonymous is called to initialize auth information when there is no access token.
+	InitAsAnonymous(ctx context.Context, req *http.Request) (T, bool)
+	// InitFromAccessToken is called to initialize a auth information when there is a valid access token.
+	InitFromAccessToken(ctx context.Context, tok jwt.Token) (T, error)
 }
 
 // AccessControl implements a simple access control scheme.
@@ -94,7 +90,7 @@ func (ac *AccessControl[T]) SignAccessToken(
 	signingKeyID string,
 	buildFn ...func(*jwt.Builder) *jwt.Builder,
 ) ([]byte, error) {
-	bldr, err := ac.logic.ToAccessTokenBuilder(ctx, info)
+	bldr, err := ac.logic.ToPartialAccessToken(ctx, info)
 	if err != nil {
 		return nil, fmt.Errorf("turn into access token builder: %w", err)
 	}
@@ -134,7 +130,7 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 	logs := stdctx.Log(ctx)
 	accessToken, ok := authn.BearerToken(req)
 	if !ok {
-		info, allow := ac.logic.AsAnonymous(ctx, req)
+		info, allow := ac.logic.InitAsAnonymous(ctx, req)
 		if !allow {
 			return nil, authn.Errorf("no token")
 		}
@@ -180,14 +176,7 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 		return nil, authn.Errorf("invalid token")
 	}
 
-	var info T
-
-	claimMap := tok.PrivateClaims()
-	if err := mapstructure.Decode(claimMap, ac.logic.PrivateClaimsDecodeTarget(&info)); err != nil {
-		return nil, authn.Errorf("failed to decode claims: %w", err)
-	}
-
-	info, err = ac.logic.ReadAccessToken(ctx, info, tok)
+	info, err := ac.logic.InitFromAccessToken(ctx, tok)
 	if err != nil {
 		return nil, authn.Errorf("read access token into auth info: %w", err)
 	}
@@ -195,7 +184,7 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 	allowedProcedures := ac.logic.ProcedurePermissions(info)
 	logs.Info("authorizing token",
 		zap.String("subject", tok.Subject()),
-		zap.Any("all_claims", claimMap),
+		zap.Any("private_claims", tok.PrivateClaims()),
 		zap.Strings("allowed_procedures", allowedProcedures))
 
 	return info, ac.checkAuthZ(logs, allowedProcedures, req)
