@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	_ "embed"
 
@@ -33,7 +34,9 @@ func TestCheckAuth(t *testing.T) {
 		Role:            "some-role",
 	}
 
-	token1, err := info.ToAccessToken(t.Context())
+	token1, err := stdlo.Must1(info.ToAccessTokenBuilder(t.Context())).
+		Issuer("auth-backend").
+		Audience([]string{"access-test"}).Build()
 	require.NoError(t, err)
 
 	validToken1, err := stdcrpcaccess.SignTestToken(token1)
@@ -121,7 +124,7 @@ func TestCheckAuth(t *testing.T) {
 			core, obs := observer.New(zapcore.DebugLevel)
 			logs := zap.New(core)
 
-			ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet())
+			ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet(), "access-test", "auth-backend", "self-sign", nil)
 			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
@@ -146,30 +149,96 @@ func TestCheckAuth(t *testing.T) {
 }
 
 func TestSigning(t *testing.T) {
-	keys, err := jwk.Parse(testJwksData)
-	require.NoError(t, err)
+	t.Run("ok", func(t *testing.T) {
+		keys, err := jwk.Parse(testJwksData)
+		require.NoError(t, err)
 
-	tsrv := stdcrpcaccess.NewTestAuthBackend()
-	ac := stdcrpcaccess.New[authInfo](tsrv, keys)
-	zc, _ := observer.New(zap.DebugLevel)
+		zc, _ := observer.New(zap.DebugLevel)
 
-	logs := zap.New(zc)
-	ctx := stdctx.WithLogger(t.Context(), logs)
+		logs := zap.New(zc)
+		ctx := stdctx.WithLogger(t.Context(), logs)
+		info := authInfo{Permissions: []string{"/a/b"}}
 
-	token, err := ac.Sign(ctx, authInfo{Permissions: []string{"/a/b"}}, "key1")
-	require.NoError(t, err)
+		tsrv := stdcrpcaccess.NewTestAuthBackend()
+		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+			"access-test",
+			"auth-backend",
+			"self-sign",
+			nil)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
-	req.Header.Set("Authorization", "Bearer "+string(token))
+		token, err := ac.SignAccessToken(ctx, info, "key1")
+		require.NoError(t, err)
 
-	ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
+		req.Header.Set("Authorization", "Bearer "+string(token))
 
-	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+		ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+	})
+
+	t.Run("with-organization", func(t *testing.T) {
+		keys, err := jwk.Parse(testJwksData)
+		require.NoError(t, err)
+
+		ctx := stdctx.WithLogger(t.Context(), zap.NewNop())
+		info := authInfo{Permissions: []string{"/a/b"}}
+
+		tsrv := stdcrpcaccess.NewTestAuthBackend()
+		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+			"access-test",
+			"auth-backend",
+			"self-sign",
+			[]jwt.Validator{jwt.ClaimValueIs("organization", "org1")})
+
+		token, err := ac.SignAccessToken(ctx, info, "key1", func(b *jwt.Builder) *jwt.Builder {
+			return b.Claim("organization", "org1")
+		})
+		require.NoError(t, err)
+
+		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
+		req.Header.Set("Authorization", "Bearer "+string(token))
+
+		ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+	})
+
+	t.Run("no-audience", func(t *testing.T) {
+		keys, err := jwk.Parse(testJwksData)
+		require.NoError(t, err)
+
+		zc, obs := observer.New(zap.DebugLevel)
+
+		logs := zap.New(zc)
+		ctx := stdctx.WithLogger(t.Context(), logs)
+		info := authInfo{Permissions: []string{"/a/b"}}
+
+		tsrv := stdcrpcaccess.NewTestAuthBackend()
+		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+			"access-test",
+			"auth-backend",
+			"self-sign",
+			nil)
+
+		token, err := ac.SignAccessToken(ctx, info, "key1", func(b *jwt.Builder) *jwt.Builder {
+			return b.IssuedAt(time.Now().Add(time.Hour))
+		})
+		require.NoError(t, err)
+
+		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
+		req.Header.Set("Authorization", "Bearer "+string(token))
+
+		ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusUnauthorized, rec.Result().StatusCode)
+		require.Len(t, obs.FilterMessage("client provided invalid token").All(), 1)
+	})
 }
 
 func TestWithHTTPClient(t *testing.T) {
 	tsrv := stdcrpcaccess.NewTestAuthBackend()
-	ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet())
+	ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet(), "access-test", "auth-backend", "self-sign", nil)
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
@@ -197,7 +266,9 @@ func TestWithHTTPClient(t *testing.T) {
 		Role:            "some-role",
 	}
 
-	token1, err := info.ToAccessToken(t.Context())
+	token1, err := stdlo.Must1(info.ToAccessTokenBuilder(t.Context())).
+		Issuer("auth-backend").
+		Audience([]string{"access-test"}).Build()
 	require.NoError(t, err)
 
 	cln := stdcrpcaccess.WithSignedTestToken(srv.Client(), func(r *http.Request) jwt.Token { return token1 })
@@ -245,12 +316,11 @@ func (info authInfo) ReadAccessToken(_ context.Context, tok jwt.Token) (authInfo
 	return info, nil
 }
 
-func (info authInfo) ToAccessToken(context.Context) (jwt.Token, error) {
+func (info authInfo) ToAccessTokenBuilder(context.Context) (*jwt.Builder, error) {
 	return jwt.NewBuilder().
 		Subject(info.PrimaryIdentity).
 		Claim("role", info.Role).
-		Claim("permissions", info.Permissions).
-		Build()
+		Claim("permissions", info.Permissions), nil
 }
 
 // ctxKey scopes the context information.

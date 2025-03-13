@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"connectrpc.com/authn"
 	"connectrpc.com/connect"
@@ -16,16 +17,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// Claims constrains the type that will hold authentication claims.
-type Claims[T any] interface {
+// Info constrains the type that will hold authentication info.
+type Info[T any] interface {
 	// ProcedurePermissions is implemented to turn the claims into permissions for connect RPC procedure annotation.
 	ProcedurePermissions() []string
 	// ReadAccessToken allows the implementation to take information from the access token. This is called
 	// AFTER custom claims have been read from the access token.
 	ReadAccessToken(ctx context.Context, tok jwt.Token) (T, error)
-	// ToAccessToken describes how an access token is created from the auth information. This is used for the signing
-	// procedure.
-	ToAccessToken(ctx context.Context) (jwt.Token, error)
+	// ToAccessToken must be implemented to describe the partial token before additional signing fields are determined
+	// such as 'exp' or 'kid'.
+	ToAccessTokenBuilder(ctx context.Context) (*jwt.Builder, error)
 	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
 	DecorateContext(ctx context.Context) context.Context
 	// AsAnonymous returns a copy of the info that is usuable to the application for anonymous access. If false is
@@ -34,42 +35,77 @@ type Claims[T any] interface {
 }
 
 // AccessControl implements a simple access control scheme.
-type AccessControl[T Claims[T]] struct {
-	authn   *authn.Middleware
+type AccessControl[T Info[T]] struct {
+	authn    *authn.Middleware
+	audience string
+	issuers  struct {
+		backend string
+		signing string
+	}
 	backend struct {
 		jwkCache    *jwk.Cache
 		jwkEndpoint string
 	}
-
-	signing jwk.Set
-	stop    func()
+	extraValidators []jwt.Validator
+	signing         jwk.Set
+	stop            func()
 }
 
 // New inits the access control.
-func New[T Claims[T]](back AuthBackend, signing jwk.Set) *AccessControl[T] {
+func New[T Info[T]](
+	back AuthBackend,
+	signing jwk.Set,
+	audience string,
+	authBackendIssuer, signingIssuer string,
+	extraValidators []jwt.Validator,
+) *AccessControl[T] {
 	ctx, cancel := context.WithCancel(context.Background())
+	act := &AccessControl[T]{
+		stop:            cancel,
+		signing:         signing,
+		audience:        audience,
+		extraValidators: extraValidators,
+	}
 
-	ac := &AccessControl[T]{stop: cancel, signing: signing}
-	ac.authn = authn.NewMiddleware(ac.checkAuthN)
-	ac.backend.jwkCache = jwk.NewCache(ctx)
-	ac.backend.jwkEndpoint = back.JWKSEndpoint()
+	act.authn = authn.NewMiddleware(act.checkAuthN)
+	act.backend.jwkCache = jwk.NewCache(ctx)
+	act.backend.jwkEndpoint = back.JWKSEndpoint()
 
-	if err := ac.backend.jwkCache.Register(ac.backend.jwkEndpoint); err != nil {
+	act.issuers.backend = authBackendIssuer
+	act.issuers.signing = signingIssuer
+
+	if err := act.backend.jwkCache.Register(act.backend.jwkEndpoint); err != nil {
 		panic("rpcaccess: failed to register jwk cache endpoint: " + err.Error())
 	}
 
-	return ac
+	return act
 }
 
-// Sign turns auth information T into an access token that is accepted by auth checks.
-func (ac *AccessControl[T]) Sign(
+// SignAccessToken turns auth information T into an access token that is accepted by auth checks. The audience
+// claim is overwritten with what is configured for this access control instance.
+func (ac *AccessControl[T]) SignAccessToken(
 	ctx context.Context,
-	claims T,
+	info T,
 	signingKeyID string,
+	buildFn ...func(*jwt.Builder) *jwt.Builder,
 ) ([]byte, error) {
-	tok, err := claims.ToAccessToken(ctx)
+	bldr, err := info.ToAccessTokenBuilder(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("turn into access token: %w", err)
+		return nil, fmt.Errorf("turn into access token builder: %w", err)
+	}
+
+	bldr = bldr.
+		IssuedAt(time.Now()).
+		NotBefore(time.Now().Add(-time.Second * 10)).
+		Audience([]string{ac.audience}).
+		Issuer(ac.issuers.signing)
+	if len(buildFn) > 0 {
+		bldr = buildFn[0](bldr)
+	}
+
+	tok, err := bldr.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build access token: %w", err)
 	}
 
 	key, ok := ac.signing.LookupKeyID(signingKeyID)
@@ -113,12 +149,30 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 		return nil, fmt.Errorf("unable to lookup JWKS: %w", err)
 	}
 
-	tok := jwt.New()
-	if _, err = jwt.ParseString(accessToken,
-		jwt.WithKeySet(keys),       // from our auth backend
-		jwt.WithKeySet(ac.signing), // from our own signing set
-		jwt.WithToken(tok),
-	); err != nil {
+	allowedIssuers := []string{ac.issuers.signing, ac.issuers.backend}
+	opts := []jwt.ParseOption{
+		jwt.WithAudience(ac.audience), // check that we are the intended audience.
+		jwt.WithKeySet(keys),          // from our auth backend
+		jwt.WithKeySet(ac.signing),    // from our own signing set
+		jwt.WithValidate(true),        // on by default, but let's be explicit about this
+
+		// custom, require ONE OF validator for issuer
+		jwt.WithValidator(jwt.ValidatorFunc(func(_ context.Context, t jwt.Token) jwt.ValidationError {
+			if slices.Contains(allowedIssuers, t.Issuer()) {
+				return nil
+			}
+
+			return jwt.ErrInvalidIssuer()
+		})),
+	}
+
+	// instance of access control might have custom validators.
+	for _, val := range ac.extraValidators {
+		opts = append(opts, jwt.WithValidator(val))
+	}
+
+	tok, err := jwt.ParseString(accessToken, opts...)
+	if err != nil {
 		logs.Info("client provided invalid token", zap.Error(err))
 		return nil, authn.Errorf("invalid token")
 	}
