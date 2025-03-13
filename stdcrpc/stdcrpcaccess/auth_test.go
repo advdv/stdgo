@@ -124,7 +124,15 @@ func TestCheckAuth(t *testing.T) {
 			core, obs := observer.New(zapcore.DebugLevel)
 			logs := zap.New(core)
 
-			ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet(), "access-test", "auth-backend", "self-sign", nil)
+			ac := stdcrpcaccess.New(
+				authLogic{},
+				tsrv,
+				jwk.NewSet(),
+				"access-test",
+				"auth-backend",
+				"self-sign",
+				nil)
+
 			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
@@ -160,7 +168,10 @@ func TestSigning(t *testing.T) {
 		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
-		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+		ac := stdcrpcaccess.New(
+			authLogic{},
+			tsrv,
+			keys,
 			"access-test",
 			"auth-backend",
 			"self-sign",
@@ -185,7 +196,10 @@ func TestSigning(t *testing.T) {
 		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
-		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+		ac := stdcrpcaccess.New(
+			authLogic{},
+			tsrv,
+			keys,
 			"access-test",
 			"auth-backend",
 			"self-sign",
@@ -215,7 +229,10 @@ func TestSigning(t *testing.T) {
 		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
-		ac := stdcrpcaccess.New[authInfo](tsrv, keys,
+		ac := stdcrpcaccess.New(
+			authLogic{},
+			tsrv,
+			keys,
 			"access-test",
 			"auth-backend",
 			"self-sign",
@@ -238,7 +255,12 @@ func TestSigning(t *testing.T) {
 
 func TestWithHTTPClient(t *testing.T) {
 	tsrv := stdcrpcaccess.NewTestAuthBackend()
-	ac := stdcrpcaccess.New[authInfo](tsrv, jwk.NewSet(), "access-test", "auth-backend", "self-sign", nil)
+	ac := stdcrpcaccess.New(
+		authLogic{},
+		tsrv,
+		jwk.NewSet(),
+		"access-test", "auth-backend", "self-sign", nil)
+
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
@@ -279,6 +301,32 @@ func TestWithHTTPClient(t *testing.T) {
 	body := stdlo.Must1(io.ReadAll(resp.Body))
 	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role", "primary_identity":"foo-1"}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+type authLogic struct{}
+
+func (authLogic) ProcedurePermissions(info authInfo) []string {
+	return info.ProcedurePermissions()
+}
+
+func (authLogic) DecorateContext(ctx context.Context, info authInfo) context.Context {
+	return info.DecorateContext(ctx)
+}
+
+func (authLogic) ReadAccessToken(ctx context.Context, info authInfo, tok jwt.Token) (authInfo, error) {
+	return info.ReadAccessToken(ctx, tok)
+}
+
+func (authLogic) ToAccessTokenBuilder(ctx context.Context, info authInfo) (*jwt.Builder, error) {
+	return info.ToAccessTokenBuilder(ctx)
+}
+
+func (authLogic) AsAnonymous(ctx context.Context, req *http.Request) (authInfo, bool) {
+	return authInfo{}.AsAnonymous(ctx, req)
+}
+
+func (authLogic) PrivateClaimsDecodeTarget(info *authInfo) any {
+	return &info
 }
 
 // authInfo describes what is passed between middlewares as result of authentication.

@@ -1,4 +1,4 @@
-// Package stdcrpcaccess implements access control for our RPC.
+// Package stdcrpcaccess implements an access control layer for Connect RPC.
 package stdcrpcaccess
 
 import (
@@ -17,25 +17,28 @@ import (
 	"go.uber.org/zap"
 )
 
-// Info constrains the type that will hold authentication info.
-type Info[T any] interface {
+// Logic defines the auth logic to implement in order to customize the auth process.
+type Logic[T any] interface {
 	// ProcedurePermissions is implemented to turn the claims into permissions for connect RPC procedure annotation.
-	ProcedurePermissions() []string
-	// ReadAccessToken allows the implementation to take information from the access token. This is called
-	// AFTER custom claims have been read from the access token.
-	ReadAccessToken(ctx context.Context, tok jwt.Token) (T, error)
-	// ToAccessToken must be implemented to describe the partial token before additional signing fields are determined
-	// such as 'exp' or 'kid'.
-	ToAccessTokenBuilder(ctx context.Context) (*jwt.Builder, error)
+	ProcedurePermissions(info T) []string
 	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
-	DecorateContext(ctx context.Context) context.Context
-	// AsAnonymous returns a copy of the info that is usuable to the application for anonymous access. If false is
+	DecorateContext(ctx context.Context, info T) context.Context
+	// ReadAccessToken allows the implementation to take information from the access token. This is called
+	// AFTER private claims have been decoded from the access token.
+	ReadAccessToken(ctx context.Context, info T, tok jwt.Token) (T, error)
+	// ToAccessTokenBuilder turns the token into an jwt that can be completed and build by shared code.
+	ToAccessTokenBuilder(ctx context.Context, info T) (*jwt.Builder, error)
+	// AsAnonymous returns a new copy of the info that is usuable to the application for anonymous access. If false is
 	// returned anonymous access is not allowed.
 	AsAnonymous(ctx context.Context, req *http.Request) (T, bool)
+	// PrivateClaimsDecodeTarget must return a pointer to the value that will be used as a decoding target for
+	// private claims.
+	PrivateClaimsDecodeTarget(info *T) any
 }
 
 // AccessControl implements a simple access control scheme.
-type AccessControl[T Info[T]] struct {
+type AccessControl[T any] struct {
+	logic    Logic[T]
 	authn    *authn.Middleware
 	audience string
 	issuers  struct {
@@ -52,7 +55,8 @@ type AccessControl[T Info[T]] struct {
 }
 
 // New inits the access control.
-func New[T Info[T]](
+func New[T any](
+	logic Logic[T],
 	back AuthBackend,
 	signing jwk.Set,
 	audience string,
@@ -61,6 +65,7 @@ func New[T Info[T]](
 ) *AccessControl[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 	act := &AccessControl[T]{
+		logic:           logic,
 		stop:            cancel,
 		signing:         signing,
 		audience:        audience,
@@ -89,7 +94,7 @@ func (ac *AccessControl[T]) SignAccessToken(
 	signingKeyID string,
 	buildFn ...func(*jwt.Builder) *jwt.Builder,
 ) ([]byte, error) {
-	bldr, err := info.ToAccessTokenBuilder(ctx)
+	bldr, err := ac.logic.ToAccessTokenBuilder(ctx, info)
 	if err != nil {
 		return nil, fmt.Errorf("turn into access token builder: %w", err)
 	}
@@ -126,17 +131,15 @@ func (ac *AccessControl[T]) Close(context.Context) error { ac.stop(); return nil
 
 // checkAuthN implements the core checkAuthN logic.
 func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (any, error) {
-	var info T
-
 	logs := stdctx.Log(ctx)
 	accessToken, ok := authn.BearerToken(req)
 	if !ok {
-		info, allow := info.AsAnonymous(ctx, req)
+		info, allow := ac.logic.AsAnonymous(ctx, req)
 		if !allow {
 			return nil, authn.Errorf("no token")
 		}
 
-		allowedProcedures := info.ProcedurePermissions()
+		allowedProcedures := ac.logic.ProcedurePermissions(info)
 		logs.Info("authorizing anonymous access", zap.Strings("allowed_procedures", allowedProcedures))
 
 		return info, ac.checkAuthZ(logs, allowedProcedures, req)
@@ -177,17 +180,19 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 		return nil, authn.Errorf("invalid token")
 	}
 
+	var info T
+
 	claimMap := tok.PrivateClaims()
-	if err := mapstructure.Decode(claimMap, &info); err != nil {
+	if err := mapstructure.Decode(claimMap, ac.logic.PrivateClaimsDecodeTarget(&info)); err != nil {
 		return nil, authn.Errorf("failed to decode claims: %w", err)
 	}
 
-	info, err = info.ReadAccessToken(ctx, tok)
+	info, err = ac.logic.ReadAccessToken(ctx, info, tok)
 	if err != nil {
 		return nil, authn.Errorf("read access token into auth info: %w", err)
 	}
 
-	allowedProcedures := info.ProcedurePermissions()
+	allowedProcedures := ac.logic.ProcedurePermissions(info)
 	logs.Info("authorizing token",
 		zap.String("subject", tok.Subject()),
 		zap.Any("all_claims", claimMap),
@@ -218,15 +223,11 @@ func (ac *AccessControl[T]) checkAuthZ(
 	return nil
 }
 
-func authzErrorf(format string, a ...any) error {
-	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(format, a...))
-}
-
 func (ac *AccessControl[T]) Wrap(next http.Handler) http.Handler {
 	// create a small middleware that transforms from the authn middleware value into our own type.
 	inner := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		info, _ := authn.GetInfo(r.Context()).(T)
-		ctx := info.DecorateContext(r.Context())
+		ctx := ac.logic.DecorateContext(r.Context(), info)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}))
 
@@ -249,4 +250,8 @@ func (ac *AccessControl[T]) Wrap(next http.Handler) http.Handler {
 	}))
 
 	return outer
+}
+
+func authzErrorf(format string, a ...any) error {
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf(format, a...))
 }
