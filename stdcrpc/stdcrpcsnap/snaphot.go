@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -24,13 +23,16 @@ import (
 type Overwrite struct {
 	Path   string
 	Value  any
-	Assert func(v gjson.Result) bool
+	Assert OverwriteAssertFunc
 }
+
+// OverwriteAssertFunc allows asserting overwitten values.
+type OverwriteAssertFunc func(tb testing.TB, v gjson.Result)
 
 // PinResponseValue is a helper that allows for dealing with response values that are not static so
 // cannot be predicted for the snapshot value. The optional 'assertActual' can still assert the actual
 // value even though it wouldn't match the snapshot.
-func PinResponseValue(atPath string, toValue any, assertActual ...func(v gjson.Result) bool) Overwrite {
+func PinResponseValue(atPath string, toValue any, assertActual ...OverwriteAssertFunc) Overwrite {
 	if len(assertActual) > 0 {
 		return Overwrite{atPath, toValue, assertActual[0]}
 	}
@@ -77,9 +79,8 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 	var err error
 	for _, actOverwrite := range actOverwrites {
 		actVal := gjson.GetBytes(actMsg, actOverwrite.Path)
-		if actOverwrite.Assert != nil && !actOverwrite.Assert(actVal) {
-			assert.Failf(tb, "actual value for overwrite is unexpected", ".%s, got: %v, response: %s",
-				actOverwrite.Path, actVal.Value(), string(actMsg))
+		if actOverwrite.Assert != nil {
+			actOverwrite.Assert(tb, actVal)
 		}
 
 		actMsg, err = sjson.SetBytes(actMsg, actOverwrite.Path, actOverwrite.Value)
