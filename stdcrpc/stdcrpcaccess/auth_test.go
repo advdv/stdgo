@@ -27,20 +27,20 @@ import (
 //go:embed fixed_jwks.json
 var testJwksData []byte
 
+func buildTestToken(tb testing.TB, primaryIdentity string, perms ...string) jwt.Token {
+	tok, err := jwt.NewBuilder().
+		Subject(primaryIdentity).
+		Claim("permissions", perms).
+		Issuer("auth-backend").
+		Audience([]string{"access-test"}).Build()
+	require.NoError(tb, err)
+	return tok
+}
+
 func TestCheckAuth(t *testing.T) {
 	tsrv := stdcrpcaccess.NewTestAuthBackend()
 
-	info := authInfo{
-		PrimaryIdentity: "foo|user-1",
-		Permissions:     []string{"/a/b", "/x/y"},
-		Role:            "some-role",
-	}
-
-	token1, err := stdlo.Must1(info.ToAccessTokenBuilder(t.Context())).
-		Issuer("auth-backend").
-		Audience([]string{"access-test"}).Build()
-	require.NoError(t, err)
-
+	token1 := buildTestToken(t, "foo|user-1", "/a/b", "/x/y")
 	validToken1, err := stdcrpcaccess.SignTestToken(token1)
 	require.NoError(t, err)
 
@@ -101,7 +101,7 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok", "/a/b", http.StatusOK,
-			`{"permissions":["/a/b", "/x/y"],"role":"some-role","primary_identity":"foo|user-1"}`,
+			`{"permissions":["/a/b", "/x/y"],"primary_identity":"foo|user-1"}`,
 			func(h http.Header) {
 				h.Set("X-Amzn-Oidc-Accesstoken", validToken1)
 			},
@@ -112,7 +112,7 @@ func TestCheckAuth(t *testing.T) {
 
 		{
 			"ok-anonymous", "/p/public", http.StatusOK,
-			`{"permissions":["/p/public"],"role":"anon", "primary_identity":""}`,
+			`{"permissions":["/p/public"],"primary_identity":""}`,
 			func(h http.Header) {
 			},
 			func(t *testing.T, obs *observer.ObservedLogs) {
@@ -145,7 +145,6 @@ func TestCheckAuth(t *testing.T) {
 				json.NewEncoder(w).Encode(map[string]any{
 					"primary_identity": info.PrimaryIdentity,
 					"permissions":      info.Permissions,
-					"role":             info.Role,
 				})
 			})).ServeHTTP(rec, req)
 
@@ -167,7 +166,6 @@ func TestSigning(t *testing.T) {
 
 		logs := zap.New(zc)
 		ctx := stdctx.WithLogger(t.Context(), logs)
-		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
 		ac := stdcrpcaccess.New(
@@ -179,7 +177,8 @@ func TestSigning(t *testing.T) {
 			"self-sign",
 			nil)
 
-		token, err := ac.SignAccessToken(ctx, info, "key1")
+		bldr := jwt.NewBuilder().Claim("permissions", []string{"/a/b"})
+		token, err := ac.SignAccessToken(bldr, "key1")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
@@ -195,7 +194,6 @@ func TestSigning(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := stdctx.WithLogger(t.Context(), zap.NewNop())
-		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
 		ac := stdcrpcaccess.New(
@@ -207,9 +205,8 @@ func TestSigning(t *testing.T) {
 			"self-sign",
 			[]jwt.Validator{jwt.ClaimValueIs("organization", "org1")})
 
-		token, err := ac.SignAccessToken(ctx, info, "key1", func(b *jwt.Builder) *jwt.Builder {
-			return b.Claim("organization", "org1")
-		})
+		bldr := jwt.NewBuilder().Claim("organization", "org1").Claim("permissions", []string{"/a/b"})
+		token, err := ac.SignAccessToken(bldr, "key1")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
@@ -220,7 +217,7 @@ func TestSigning(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Result().StatusCode)
 	})
 
-	t.Run("no-audience", func(t *testing.T) {
+	t.Run("invalid", func(t *testing.T) {
 		keys, err := jwk.Parse(testJwksData)
 		require.NoError(t, err)
 
@@ -228,7 +225,6 @@ func TestSigning(t *testing.T) {
 
 		logs := zap.New(zc)
 		ctx := stdctx.WithLogger(t.Context(), logs)
-		info := authInfo{Permissions: []string{"/a/b"}}
 
 		tsrv := stdcrpcaccess.NewTestAuthBackend()
 		ac := stdcrpcaccess.New(
@@ -240,9 +236,8 @@ func TestSigning(t *testing.T) {
 			"self-sign",
 			nil)
 
-		token, err := ac.SignAccessToken(ctx, info, "key1", func(b *jwt.Builder) *jwt.Builder {
-			return b.IssuedAt(time.Now().Add(time.Hour))
-		})
+		bldr := jwt.NewBuilder().Claim("permissions", []string{"/a/b"}).NotBefore(time.Now().Add(time.Hour))
+		token, err := ac.SignAccessToken(bldr, "key1")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
@@ -266,17 +261,16 @@ func TestWithHTTPClient(t *testing.T) {
 	zc, _ := observer.New(zap.DebugLevel)
 	logs := zap.New(zc)
 
-	innter := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	inner := ac.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		info := infoFromContext(r.Context())
 		json.NewEncoder(w).Encode(map[string]any{
 			"primary_identity": info.PrimaryIdentity,
 			"permissions":      info.Permissions,
-			"role":             info.Role,
 		})
 	}))
 
 	outer := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		innter.ServeHTTP(w, r.WithContext(stdctx.WithLogger(r.Context(), logs)))
+		inner.ServeHTTP(w, r.WithContext(stdctx.WithLogger(r.Context(), logs)))
 	}))
 
 	srv := httptest.NewServer(outer)
@@ -284,35 +278,25 @@ func TestWithHTTPClient(t *testing.T) {
 	ctx := t.Context()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/a/b", nil)
 
-	info := authInfo{
-		PrimaryIdentity: "foo-1",
-		Permissions:     []string{"/a/b"},
-		Role:            "some-role",
-	}
-
-	token1, err := stdlo.Must1(info.ToAccessTokenBuilder(t.Context())).
-		Issuer("auth-backend").
-		Audience([]string{"access-test"}).Build()
-	require.NoError(t, err)
-
+	token1 := buildTestToken(t, "foo-1", "/a/b")
 	cln := stdcrpcaccess.WithSignedTestToken(srv.Client(), func(r *http.Request) jwt.Token { return token1 })
 	resp, err := cln.Do(req)
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
 
 	body := stdlo.Must1(io.ReadAll(resp.Body))
-	require.JSONEq(t, `{"permissions":["/a/b"],"role":"some-role", "primary_identity":"foo-1"}`, string(body))
+	require.JSONEq(t, `{"permissions":["/a/b"],"primary_identity":"foo-1"}`, string(body))
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 type authLogic struct{}
 
 func (authLogic) ProcedurePermissions(info authInfo) []string {
-	return info.ProcedurePermissions()
+	return stdlo.Map(info.Permissions, func(s string, _ int) string { return s })
 }
 
 func (authLogic) DecorateContext(ctx context.Context, info authInfo) context.Context {
-	return info.DecorateContext(ctx)
+	return context.WithValue(ctx, ctxKey("info"), info)
 }
 
 func (authLogic) InitFromAccessToken(ctx context.Context, tok jwt.Token) (authInfo, error) {
@@ -324,39 +308,9 @@ func (authLogic) InitFromAccessToken(ctx context.Context, tok jwt.Token) (authIn
 	return info, nil
 }
 
-func (authLogic) ToPartialAccessToken(ctx context.Context, info authInfo) (*jwt.Builder, error) {
-	return info.ToAccessTokenBuilder(ctx)
-}
-
-func (authLogic) InitAsAnonymous(ctx context.Context, req *http.Request) (authInfo, bool) {
-	return authInfo{}.AsAnonymous(ctx, req)
-}
-
-func (authLogic) PrivateClaimsDecodeTarget(info *authInfo) any {
-	return &info
-}
-
-// authInfo describes what is passed between middlewares as result of authentication.
-type authInfo struct {
-	PrimaryIdentity string
-	Role            string   `mapstructure:"role"`
-	Permissions     []string `mapstructure:"permissions"`
-}
-
-// ProcedurePermissions returns the permissions in the format of Connect RPC procedures.
-func (info authInfo) ProcedurePermissions() []string {
-	return stdlo.Map(info.Permissions, func(s string, _ int) string { return s })
-}
-
-// DecorateContext is called after the middleware has authenticated.
-func (info authInfo) DecorateContext(ctx context.Context) context.Context {
-	ctx = context.WithValue(ctx, ctxKey("info"), info)
-	return ctx
-}
-
-func (info authInfo) AsAnonymous(_ context.Context, r *http.Request) (authInfo, bool) {
+func (authLogic) InitAsAnonymous(ctx context.Context, r *http.Request) (authInfo, bool) {
+	info := authInfo{}
 	if r.URL.Path == "/p/public" {
-		info.Role = "anon"
 		info.Permissions = []string{"/p/public"}
 
 		return info, true
@@ -365,11 +319,10 @@ func (info authInfo) AsAnonymous(_ context.Context, r *http.Request) (authInfo, 
 	return info, false
 }
 
-func (info authInfo) ToAccessTokenBuilder(context.Context) (*jwt.Builder, error) {
-	return jwt.NewBuilder().
-		Subject(info.PrimaryIdentity).
-		Claim("role", info.Role).
-		Claim("permissions", info.Permissions), nil
+// authInfo describes what is passed between middlewares as result of authentication.
+type authInfo struct {
+	PrimaryIdentity string
+	Permissions     []string `mapstructure:"permissions"`
 }
 
 // ctxKey scopes the context information.

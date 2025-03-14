@@ -22,10 +22,6 @@ type Logic[T any] interface {
 	ProcedurePermissions(info T) []string
 	// DecorateContext implements how auth information is stored in the context for the rest of the application to use.
 	DecorateContext(ctx context.Context, info T) context.Context
-
-	// ToParialAccessToken turns the token into an jwt that can be completed and build by shared code.
-	ToPartialAccessToken(ctx context.Context, info T) (*jwt.Builder, error)
-
 	// InitAsAnonymous is called to initialize auth information when there is no access token.
 	InitAsAnonymous(ctx context.Context, req *http.Request) (T, bool)
 	// InitFromAccessToken is called to initialize a auth information when there is a valid access token.
@@ -85,24 +81,13 @@ func New[T any](
 // SignAccessToken turns auth information T into an access token that is accepted by auth checks. The audience
 // claim is overwritten with what is configured for this access control instance.
 func (ac *AccessControl[T]) SignAccessToken(
-	ctx context.Context,
-	info T,
+	bldr *jwt.Builder, // partial token
 	signingKeyID string,
-	buildFn ...func(*jwt.Builder) *jwt.Builder,
 ) ([]byte, error) {
-	bldr, err := ac.logic.ToPartialAccessToken(ctx, info)
-	if err != nil {
-		return nil, fmt.Errorf("turn into access token builder: %w", err)
-	}
-
 	bldr = bldr.
 		IssuedAt(time.Now()).
-		NotBefore(time.Now().Add(-time.Second * 10)).
 		Audience([]string{ac.audience}).
 		Issuer(ac.issuers.signing)
-	if len(buildFn) > 0 {
-		bldr = buildFn[0](bldr)
-	}
 
 	tok, err := bldr.Build()
 	if err != nil {
