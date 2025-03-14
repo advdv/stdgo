@@ -102,7 +102,7 @@ func Transact1[T Tx, U any](
 			// recover is triggered, and no error is returned either. This is common in assertion libraries
 			// such as Testify's require. This defer ensures that the tx is also rolled back in failed tests.
 			defer func() {
-				if err := tx.Rollback(); err != nil {
+				if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 					logs.Debug("tx's defer callback failure", zap.Error(err))
 				}
 			}()
