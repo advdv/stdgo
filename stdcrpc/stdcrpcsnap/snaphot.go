@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/advdv/stdgo/stdlo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -80,9 +81,7 @@ func ResponseSnapshotEq[O any](
 // SnapshotEq compares the protobuf message against a snapshot. If the snapshot file doesn't exist it
 // is created instead.
 func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
-	fmtActMsg, err := formatJSONData(actMsg)
-	require.NoError(tb, err)
-
+	var err error
 	for _, actOverwrite := range actOverwrites {
 		actVal := gjson.GetBytes(actMsg, actOverwrite.Path)
 		if actOverwrite.Assert != nil {
@@ -90,7 +89,8 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 		}
 
 		if tb.Failed() {
-			tb.Logf("overwrite assert failed, actual JSON: %s", fmtActMsg)
+			tb.Logf("overwrite assert failed, actual JSON: %s",
+				stdlo.Must1(formatJSONData(actMsg)))
 		}
 
 		actMsg, err = sjson.SetBytes(actMsg, actOverwrite.Path, actOverwrite.Value)
@@ -111,7 +111,8 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 		require.NoError(tb, err)
 	}
 
-	require.JSONEqf(tb, string(expMsg), string(actMsg), "snapshot mismatch, actual JSON: %s", fmtActMsg)
+	require.JSONEqf(tb, string(expMsg), string(actMsg), "snapshot mismatch, actual JSON: %s",
+		stdlo.Must1(formatJSONData(actMsg)))
 }
 
 func formatJSONData(data []byte) (string, error) {
