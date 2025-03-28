@@ -32,7 +32,7 @@ type Overwrite struct {
 }
 
 // OverwriteAssertFunc allows asserting overwitten values.
-type OverwriteAssertFunc func(tb assert.TestingT, v gjson.Result)
+type OverwriteAssertFunc func(t assert.TestingT, v gjson.Result)
 
 // PinResponseValue is a helper that allows for dealing with response values that are not static so
 // cannot be predicted for the snapshot value. The optional 'assertActual' can still assert the actual
@@ -79,13 +79,21 @@ func ResponseSnapshotEq[O any](
 }
 
 // SnapshotEq compares the protobuf message against a snapshot. If the snapshot file doesn't exist it
-// is created instead.
+// is created instead. It allows overwriting parts of the message with static values while asserting
+// the replaced values precicely. This allows for part of the message to be dynanmic but still tightly
+// asserted.
 func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 	var err error
 	for _, actOverwrite := range actOverwrites {
 		actVal := gjson.GetBytes(actMsg, actOverwrite.Path)
 		if actOverwrite.Assert != nil {
-			actOverwrite.Assert(tb, actVal)
+			if len(actVal.Paths(string(actMsg))) == 0 {
+				actOverwrite.Assert(tb, actVal)
+			} else {
+				for _, res := range actVal.Array() {
+					actOverwrite.Assert(tb, res)
+				}
+			}
 		}
 
 		if tb.Failed() {
@@ -93,8 +101,17 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 				stdlo.Must1(formatJSONData(actMsg)))
 		}
 
-		actMsg, err = sjson.SetBytes(actMsg, actOverwrite.Path, actOverwrite.Value)
-		require.NoError(tb, err)
+		// in case the paths is NOT a wildcared path, the Paths actually returns an empty slice.
+		paths := actVal.Paths(string(actMsg))
+		if len(paths) == 0 {
+			paths = append(paths, actVal.Path(string(actMsg)))
+		}
+
+		// a path may match multiple, we set the pinned value for each.
+		for _, pathForSet := range paths {
+			actMsg, err = sjson.SetBytes(actMsg, pathForSet, actOverwrite.Value)
+			require.NoError(tb, err)
+		}
 	}
 
 	expFilePath := filepath.Join("testdata", tb.Name()+".json")
@@ -111,6 +128,7 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 		require.NoError(tb, err)
 	}
 
+	// finally, actually compare the json.
 	require.JSONEqf(tb, string(expMsg), string(actMsg), "snapshot mismatch, actual JSON: %s",
 		stdlo.Must1(formatJSONData(actMsg)))
 }
