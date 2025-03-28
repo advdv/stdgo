@@ -30,6 +30,7 @@ linters-settings:
       - ok # common bool
       - rw # read-write database
       - ro # read-only database
+      - tb # testing
 linters:
   enable-all: true
   disable:
