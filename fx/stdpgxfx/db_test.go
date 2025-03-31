@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
 
@@ -109,11 +110,11 @@ func TestProvideWithDeriver(t *testing.T) {
 
 	app := fxtest.New(t, shared,
 		stdpgxfx.Provide("db0", "db1"),
-		stdpgxfx.ProvideDeriver("db0", func(base *pgxpool.Config) *pgxpool.Config {
+		stdpgxfx.ProvideDeriver("db0", func(logs *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			deriver0Name = "db0"
 			return base
 		}),
-		stdpgxfx.ProvideDeriver("db1", func(base *pgxpool.Config) *pgxpool.Config {
+		stdpgxfx.ProvideDeriver("db1", func(logs *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			deriver1Name = "db1"
 			return base
 		}),
@@ -165,24 +166,18 @@ func TestProvideTestWithMigrator(t *testing.T) {
 
 	app := fxtest.New(t, shared,
 		stdpgxfx.TestProvide(t, mig, "db0", "db1"),
-		// provide the pgtesdb migrator.
-		// fx.Provide(func() pgtestdb.Migrator {
-		// 	return goosemigrator.New(filepath.Join("testdata", "migrations1"))
-		// }),
-		// // provide the mimplementation of our test migrator
-		// fx.Provide(stdpgxfx.NewPgtestdbTestMigrator),
 		// imagine an after migration user, such that the deriver can see it.
 		fx.Supply(&pgtestdb.Role{
 			Username: "postgres",
 			Password: "postgres",
 		}),
 		// derived databases should get the "after" role
-		stdpgxfx.ProvideDeriver("db0", func(base *pgxpool.Config) *pgxpool.Config {
+		stdpgxfx.ProvideDeriver("db0", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			db0DerivedUser = base.ConnConfig.User
 			db0DerivedPassword = base.ConnConfig.Password
 			return base
 		}),
-		stdpgxfx.ProvideDeriver("db1", func(base *pgxpool.Config) *pgxpool.Config {
+		stdpgxfx.ProvideDeriver("db1", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			db1DerivedUser = base.ConnConfig.User
 			db1DerivedPassword = base.ConnConfig.Password
 			return base

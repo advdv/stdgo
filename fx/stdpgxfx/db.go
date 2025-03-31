@@ -131,10 +131,10 @@ func newDB(
 	lc fx.Lifecycle,
 	_ Config,
 	pcfg *pgxpool.Config,
-	_ *zap.Logger,
+	logs *zap.Logger,
 ) (*sql.DB, error) {
 	if deriver != nil {
-		pcfg = deriver(pcfg.Copy())
+		pcfg = deriver(logs, pcfg.Copy())
 	}
 
 	opts := []stdlib.OptionOpenDB{}
@@ -165,7 +165,7 @@ func Provide(mainPoolName string, derivedPoolNames ...string) fx.Option {
 }
 
 // Deriver needs to be provided by the user of this module if derived pools are created.
-type Deriver func(base *pgxpool.Config) *pgxpool.Config
+type Deriver func(logs *zap.Logger, base *pgxpool.Config) *pgxpool.Config
 
 // ProvideDeriver is a short-hande function for providing a named deriver function that.
 func ProvideDeriver(name string, deriver Deriver) fx.Option {
