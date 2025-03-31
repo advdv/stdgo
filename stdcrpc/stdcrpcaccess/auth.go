@@ -133,11 +133,28 @@ func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (
 		return nil, fmt.Errorf("unable to lookup JWKS: %w", err)
 	}
 
+	// we combine our ouw own signing key set with the one from the backend.
+	combined, err := keys.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("clone key set: %w", err)
+	}
+
+	for i := range ac.signing.Len() {
+		key, ok := ac.signing.Key(i)
+		if !ok {
+			panic("stdcrpcaccess: invalid indx into key set")
+		}
+
+		if err := combined.AddKey(key); err != nil {
+			return nil, fmt.Errorf("add signing key to combined key set: %w", err)
+		}
+	}
+
+	// finally, do the jwt validation.
 	allowedIssuers := []string{ac.issuers.signing, ac.issuers.backend}
 	opts := []jwt.ParseOption{
 		jwt.WithAudience(ac.audience), // check that we are the intended audience.
-		jwt.WithKeySet(keys),          // from our auth backend
-		jwt.WithKeySet(ac.signing),    // from our own signing set
+		jwt.WithKeySet(combined),      // from our own signing set
 		jwt.WithValidate(true),        // on by default, but let's be explicit about this
 
 		// custom, require ONE OF validator for issuer

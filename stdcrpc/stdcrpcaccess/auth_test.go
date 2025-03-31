@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-//go:embed fixed_jwks.json
-var testJwksData []byte
+//go:embed fixed_jwks_2.json
+var fixedJwks2Data []byte
 
 func buildTestToken(tb testing.TB, primaryIdentity string, perms ...string) jwt.Token {
 	tok, err := jwt.NewBuilder().
@@ -159,7 +159,7 @@ func TestCheckAuth(t *testing.T) {
 
 func TestSigning(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
-		keys, err := jwk.Parse(testJwksData)
+		keys, err := jwk.Parse(fixedJwks2Data)
 		require.NoError(t, err)
 
 		zc, _ := observer.New(zap.DebugLevel)
@@ -178,7 +178,7 @@ func TestSigning(t *testing.T) {
 			nil)
 
 		bldr := jwt.NewBuilder().Claim("permissions", []string{"/a/b"})
-		token, err := ac.SignAccessToken(bldr, "key1")
+		token, err := ac.SignAccessToken(bldr, "key2")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
@@ -190,7 +190,7 @@ func TestSigning(t *testing.T) {
 	})
 
 	t.Run("with-organization", func(t *testing.T) {
-		keys, err := jwk.Parse(testJwksData)
+		keys, err := jwk.Parse(fixedJwks2Data)
 		require.NoError(t, err)
 
 		ctx := stdctx.WithLogger(t.Context(), zap.NewNop())
@@ -206,7 +206,7 @@ func TestSigning(t *testing.T) {
 			[]jwt.Validator{jwt.ClaimValueIs("organization", "org1")})
 
 		bldr := jwt.NewBuilder().Claim("organization", "org1").Claim("permissions", []string{"/a/b"})
-		token, err := ac.SignAccessToken(bldr, "key1")
+		token, err := ac.SignAccessToken(bldr, "key2")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)
@@ -218,7 +218,7 @@ func TestSigning(t *testing.T) {
 	})
 
 	t.Run("invalid", func(t *testing.T) {
-		keys, err := jwk.Parse(testJwksData)
+		keys, err := jwk.Parse(fixedJwks2Data)
 		require.NoError(t, err)
 
 		zc, obs := observer.New(zap.DebugLevel)
@@ -237,7 +237,7 @@ func TestSigning(t *testing.T) {
 			nil)
 
 		bldr := jwt.NewBuilder().Claim("permissions", []string{"/a/b"}).NotBefore(time.Now().Add(time.Hour))
-		token, err := ac.SignAccessToken(bldr, "key1")
+		token, err := ac.SignAccessToken(bldr, "key2")
 		require.NoError(t, err)
 
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/a/b", nil)

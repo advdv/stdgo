@@ -12,8 +12,8 @@ import (
 	"go.uber.org/fx"
 )
 
-//go:embed fixed_jwks.json
-var testJwksData []byte
+//go:embed fixed_jwks_1.json
+var fixedJwks1Data []byte
 
 // TestAuthBackend is an auth backend that is run locally and we control the signing process for.
 type TestAuthBackend struct {
@@ -41,13 +41,13 @@ func WithTestAuthBackend() fx.Option {
 // NewTestAuthBackend starts a server for testing that serves the key set.
 func NewTestAuthBackend() *TestAuthBackend {
 	return &TestAuthBackend{httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(testJwksData)
+		_, _ = w.Write(fixedJwks1Data)
 	}))}
 }
 
 // SignTestToken signs a valid JWT against a well-known private key for testing.
 func SignTestToken(tok jwt.Token) (string, error) {
-	jwks, err := jwk.Parse(testJwksData)
+	jwks, err := jwk.Parse(fixedJwks1Data)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse jwk: %w", err)
 	}
