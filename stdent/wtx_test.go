@@ -2,6 +2,7 @@ package stdent_test
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,42 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+func TestTxRawSQLExec(t *testing.T) {
+	ctx := setup1(t)
+	tx := setupTx(t, ctx, 100)
+
+	q, ok := tx.(interface {
+		ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	})
+	require.True(t, ok)
+	require.NotNil(t, q)
+
+	res, err := q.ExecContext(ctx, `DO $$ BEGIN END; $$;`)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+}
+
+func TestTxRawSQLQuery(t *testing.T) {
+	ctx := setup1(t)
+	tx := setupTx(t, ctx, 100)
+
+	q, ok := tx.(interface {
+		QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	})
+	require.True(t, ok)
+	require.NotNil(t, q)
+
+	res, err := q.QueryContext(ctx, `select 42`)
+	require.NoError(t, err)
+	defer res.Close()
+
+	var v int
+	require.True(t, res.Next())
+	require.NoError(t, res.Scan(&v))
+	require.NoError(t, res.Err())
+	require.Equal(t, 42, v)
+}
 
 func TestTxWithinMaxCost(t *testing.T) {
 	ctx := setup1(t)

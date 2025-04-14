@@ -2,6 +2,7 @@ package stdent
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -37,12 +38,53 @@ func (tx WTx) Query(ctx context.Context, query string, args, v any) error {
 	return tx.do(ctx, query, args, v, tx.Tx.Query)
 }
 
+// toSQLTx casts to standard sql.Tx.
+func (tx WTx) toSQLTx() (*sql.Tx, error) {
+	entTx, ok := tx.Tx.(*entsql.Tx)
+	if !ok {
+		return nil, fmt.Errorf("WTx does not implement *entgo.io/ent/dialect/sql.Tx")
+	}
+
+	sqlTx, ok := entTx.Conn.ExecQuerier.(*sql.Tx)
+	if !ok {
+		return nil, fmt.Errorf("WTx does not contain *sql.Tx")
+	}
+
+	return sqlTx, nil
+}
+
+// QueryContext implements a way to execute raw sql.
+func (tx WTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	sqlTx, err := tx.toSQLTx()
+	if err != nil {
+		return nil, err
+	}
+
+	return sqlTx.QueryContext(ctx, query, args...)
+}
+
+// ExecContext implements a way to execute raw sql.
+func (tx WTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	sqlTx, err := tx.toSQLTx()
+	if err != nil {
+		return nil, err
+	}
+
+	return sqlTx.ExecContext(ctx, query, args...)
+}
+
 func (tx WTx) do(
 	ctx context.Context, query string, args, val any,
 	dof func(ctx context.Context, query string, args, v any) error,
 ) error {
 	if tx.MaxQueryPlanCosts <= 0 || NoTestForMaxQueryPlanCosts(ctx) {
 		return dof(ctx, query, args, val) // just execute
+	}
+
+	// This check enforces during tests that any use of our custom driver will allow access to the
+	// raw sql.Tx if we need it down the line. We want to force this in our abstraction early.
+	if _, err := tx.toSQLTx(); err != nil {
+		return fmt.Errorf("failed to cast WTx into sql.Tx: %w", err)
 	}
 
 	// plan describes a query plan with the cost, see:
@@ -96,3 +138,9 @@ func (tx WTx) do(
 	// finally, run the actual query
 	return dof(ctx, query, args, val)
 }
+
+// the transaction must also implement this interface to support the raw sql feature flag.
+var _ interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+} = &WTx{}
