@@ -53,6 +53,14 @@ func TestTxRawSQLQuery(t *testing.T) {
 	require.NoError(t, res.Scan(&v))
 	require.NoError(t, res.Err())
 	require.Equal(t, 42, v)
+
+	r, ok := tx.(interface {
+		StandardTx() *sql.Tx
+	})
+
+	require.True(t, ok)
+	require.NotNil(t, r)
+	require.NotNil(t, r.StandardTx())
 }
 
 func TestTxWithinMaxCost(t *testing.T) {

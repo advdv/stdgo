@@ -53,6 +53,18 @@ func (tx WTx) toSQLTx() (*sql.Tx, error) {
 	return sqlTx, nil
 }
 
+// StandardTx returns the sql.Tx instance that this Ent transaction holds. This is useful for
+// code that depends on that interface. It panics if the Ent transaction could not be converted
+// to a *sql.Tx.
+func (tx WTx) StandardTx() *sql.Tx {
+	sqltx, err := tx.toSQLTx()
+	if err != nil {
+		panic("stdent: convert ent tx to *sql.Tx: " + err.Error())
+	}
+
+	return sqltx
+}
+
 // QueryContext implements a way to execute raw sql.
 func (tx WTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	sqlTx, err := tx.toSQLTx()
@@ -143,4 +155,5 @@ func (tx WTx) do(
 var _ interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	StandardTx() *sql.Tx
 } = &WTx{}
