@@ -31,7 +31,7 @@ func TestProvideNoDeriver(t *testing.T) {
 	}
 
 	app := fxtest.New(t, shared,
-		stdpgxfx.Provide("db0", "db1"),
+		stdpgxfx.Provide(stdpgxfx.NewStandardDriver(), "db0", "db1"),
 		fx.Populate(&res))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
@@ -46,7 +46,7 @@ func TestNoticeLogging(t *testing.T) {
 	var db *sql.DB
 	var obs *observer.ObservedLogs
 
-	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "rw"), fx.Populate(&db, &obs))
+	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"), fx.Populate(&db, &obs))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
 	require.NotNil(t, db)
@@ -82,7 +82,7 @@ func TestIamAuth(t *testing.T) {
 			"STDZAP_LEVEL":             "debug",
 		}),
 
-		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "rw"),
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
 		fx.Populate(&db, &pcfg, &obs))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
@@ -109,7 +109,7 @@ func TestProvideWithDeriver(t *testing.T) {
 	var deriver1Name string
 
 	app := fxtest.New(t, shared,
-		stdpgxfx.Provide("db0", "db1"),
+		stdpgxfx.Provide(stdpgxfx.NewStandardDriver(), "db0", "db1"),
 		stdpgxfx.ProvideDeriver("db0", func(logs *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			deriver0Name = "db0"
 			return base
@@ -139,7 +139,7 @@ func TestProvideTest(t *testing.T) {
 	}
 
 	app := fxtest.New(t, shared,
-		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, "db0", "db1"),
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "db0", "db1"),
 		fx.Populate(&res))
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
@@ -165,7 +165,7 @@ func TestProvideTestWithMigrator(t *testing.T) {
 	mig := goosemigrator.New(filepath.Join("testdata", "migrations1"))
 
 	app := fxtest.New(t, shared,
-		stdpgxfx.TestProvide(t, mig, "db0", "db1"),
+		stdpgxfx.TestProvide(t, mig, stdpgxfx.NewStandardDriver(), "db0", "db1"),
 		// imagine an after migration user, such that the deriver can see it.
 		fx.Supply(&pgtestdb.Role{
 			Username: "postgres",
@@ -193,6 +193,59 @@ func TestProvideTestWithMigrator(t *testing.T) {
 	_, err := res.DB0.ExecContext(ctx, `INSERT INTO foo(id) VALUES($1)`, uuid.New())
 	require.NoError(t, err)
 	_, err = res.DB1.ExecContext(ctx, `INSERT INTO foo(id) VALUES($1)`, uuid.New())
+	require.NoError(t, err)
+
+	require.Equal(t, "postgres", db0DerivedUser)
+	require.Equal(t, "postgres", db0DerivedPassword)
+	require.Equal(t, "postgres", db1DerivedUser)
+	require.Equal(t, "postgres", db1DerivedPassword)
+}
+
+func TestProvidePgxPoolTestWithMigrator(t *testing.T) {
+	ctx, shared := setup(t)
+
+	var res struct {
+		fx.In
+		DB0 *pgxpool.Pool `name:"db0"`
+		DB1 *pgxpool.Pool `name:"db1"`
+	}
+
+	var db1DerivedUser string
+	var db1DerivedPassword string
+	var db0DerivedUser string
+	var db0DerivedPassword string
+
+	mig := goosemigrator.New(filepath.Join("testdata", "migrations1"))
+
+	app := fxtest.New(t, shared,
+		stdpgxfx.TestProvide(t, mig, stdpgxfx.NewPgxV5Driver(), "db0", "db1"),
+		// imagine an after migration user, such that the deriver can see it.
+		fx.Supply(&pgtestdb.Role{
+			Username: "postgres",
+			Password: "postgres",
+		}),
+		// derived databases should get the "after" role
+		stdpgxfx.ProvideDeriver("db0", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
+			db0DerivedUser = base.ConnConfig.User
+			db0DerivedPassword = base.ConnConfig.Password
+			return base
+		}),
+		stdpgxfx.ProvideDeriver("db1", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
+			db1DerivedUser = base.ConnConfig.User
+			db1DerivedPassword = base.ConnConfig.Password
+			return base
+		}),
+
+		fx.Populate(&res))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	require.NotNil(t, res.DB0)
+	require.NotNil(t, res.DB1)
+
+	_, err := res.DB0.Exec(ctx, `INSERT INTO foo(id) VALUES($1)`, uuid.New())
+	require.NoError(t, err)
+	_, err = res.DB1.Exec(ctx, `INSERT INTO foo(id) VALUES($1)`, uuid.New())
 	require.NoError(t, err)
 
 	require.Equal(t, "postgres", db0DerivedUser)

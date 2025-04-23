@@ -3,7 +3,6 @@ package stdpgxfx
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -24,7 +22,6 @@ import (
 type Config struct {
 	// MainDatabaseURL configures the database connection string for the main connection.
 	MainDatabaseURL string `env:"MAIN_DATABASE_URL,required"`
-
 	// IamAuthRegion when set cause the password to be replaced by an IAM token for authentication.
 	IamAuthRegion string `env:"IAM_AUTH_REGION"`
 }
@@ -126,26 +123,26 @@ func buildIamAuthToken(
 
 // newDB is the low-level constructor for turning our config into sql databases. It is
 // called for both the main pool and the derived pools.
-func newDB(
+func newDB[DBT any](
 	deriver Deriver, // optional
-	lc fx.Lifecycle,
+	lcl fx.Lifecycle,
 	_ Config,
 	pcfg *pgxpool.Config,
 	logs *zap.Logger,
-) (*sql.DB, error) {
+	drv Driver[DBT],
+) (DBT, error) {
 	if deriver != nil {
 		pcfg = deriver(logs, pcfg.Copy())
 	}
 
-	opts := []stdlib.OptionOpenDB{}
-	if pcfg.BeforeConnect != nil {
-		opts = append(opts, stdlib.OptionBeforeConnect(pcfg.BeforeConnect))
+	db, err := drv.NewPool(pcfg)
+	if err != nil {
+		return db, err
 	}
 
-	db := stdlib.OpenDB(*pcfg.ConnConfig, opts...)
-	lc.Append(fx.Hook{
+	lcl.Append(fx.Hook{
 		OnStop: func(context.Context) error {
-			return db.Close()
+			return drv.Close(db)
 		},
 	})
 
@@ -153,14 +150,16 @@ func newDB(
 }
 
 // Provide components as fx dependencies.
-func Provide(mainPoolName string, derivedPoolNames ...string) fx.Option {
+func Provide[DBT any](drv Driver[DBT], mainPoolName string, derivedPoolNames ...string) fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx", New,
+		// for some dynamically created provides are dependant on this.
+		fx.Provide(func() Driver[DBT] { return drv }),
 		// provide the "main" pool
-		fx.Provide(fx.Annotate(newDB,
+		fx.Provide(fx.Annotate(newDB[DBT],
 			fx.ParamTags(`name:"`+mainPoolName+`" optional:"true"`),
 			fx.ResultTags(`name:"`+mainPoolName+`"`))),
 		// provide the "derived" pools (if any)
-		withDerivedPools(mainPoolName, derivedPoolNames...),
+		withDerivedPools(drv, mainPoolName, derivedPoolNames...),
 	)
 }
 
@@ -177,17 +176,17 @@ func ProvideDeriver(name string, deriver Deriver) fx.Option {
 
 // withDerivedPools dynamically adds fx provides for creating connection pools that
 // take the base pool as input.
-func withDerivedPools(mainName string, names ...string) fx.Option {
+func withDerivedPools[DBT any](drv Driver[DBT], mainName string, names ...string) fx.Option {
 	options := make([]fx.Option, 0, len(names))
 	for _, name := range names {
 		options = append(options, fx.Provide(
 			fx.Annotate(func(
-				_ *sql.DB, deriver Deriver, pcfg *pgxpool.Config, lc fx.Lifecycle, cfg Config, logs *zap.Logger,
-			) (derived *sql.DB, err error) {
+				_ DBT, deriver Deriver, pcfg *pgxpool.Config, lc fx.Lifecycle, cfg Config, logs *zap.Logger,
+			) (derived DBT, err error) {
 				// create the pool for each named derived.
-				derived, err = newDB(deriver, lc, cfg, pcfg, logs)
+				derived, err = newDB(deriver, lc, cfg, pcfg, logs, drv)
 				if err != nil {
-					return nil, fmt.Errorf("failed to created derived pool: %w", err)
+					return derived, fmt.Errorf("failed to created derived pool: %w", err)
 				}
 
 				logs.Info("initialized derived pool", zap.String("name", name))

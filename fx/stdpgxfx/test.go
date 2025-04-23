@@ -37,19 +37,21 @@ func newTestConfigProvider(tb testing.TB) func(testConfigProviderParams) (Result
 }
 
 // TestProvide provides the package's components as an fx module with a setup more useful for testing.
-func TestProvide(tb testing.TB, mig pgtestdb.Migrator, mainPoolName string, derivedPoolNames ...string) fx.Option {
+func TestProvide[DBT any](
+	tb testing.TB, mig pgtestdb.Migrator, drv Driver[DBT], mainPoolName string, derivedPoolNames ...string,
+) fx.Option {
 	tb.Helper()
 
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx",
 		// a wrapped config provider that migrates before providing the config.
 		newTestConfigProvider(tb),
-
+		// for some dynamically created provides are dependant on this.
+		fx.Provide(func() Driver[DBT] { return drv }),
 		// setup dependecies for the test config provider.
 		fx.Provide(func() pgtestdb.Migrator { return mig }),
 		fx.Provide(NewPgtestdbTestMigrator),
-
 		// provide the "main" db, wrapped with migrating logic.
-		fx.Provide(fx.Annotate(newDB,
+		fx.Provide(fx.Annotate(newDB[DBT],
 			fx.ParamTags(
 				`name:"`+mainPoolName+`" optional:"true"`, // deriver
 				`optional:"true"`, // migrator
@@ -61,6 +63,6 @@ func TestProvide(tb testing.TB, mig pgtestdb.Migrator, mainPoolName string, deri
 				return p
 			}, fx.ParamTags(`name:"`+mainPoolName+`"`))),
 		// included derived pools
-		withDerivedPools(mainPoolName, derivedPoolNames...),
+		withDerivedPools(drv, mainPoolName, derivedPoolNames...),
 	)
 }
