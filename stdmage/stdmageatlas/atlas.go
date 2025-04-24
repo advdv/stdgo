@@ -34,6 +34,8 @@ var (
 	snapshotTargetContainer string
 	// directory where the snapshot is stored in.
 	snapshotDir = filepath.Join("migrations", "snapshot")
+	// the image used for snapshotting.
+	snapshotDockerImage = "postgres:17.2-alpine"
 )
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
@@ -44,6 +46,7 @@ func Init(
 	snapshotRelDir string,
 	snapshotTargetContainerName string,
 	snapshotTargetConnStrEnvName string,
+	snapshotDockerImageTag string,
 	hook PatchFunc,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
 ) {
@@ -56,6 +59,7 @@ func Init(
 	snapshotTargetContainer = snapshotTargetContainerName
 	snapshotDir = snapshotRelDir
 	snapshotTargetEnv = snapshotTargetConnStrEnvName
+	snapshotDockerImage = snapshotDockerImageTag
 }
 
 // Inspect visualizes the schema.
@@ -147,7 +151,7 @@ func Snapshot() error {
 		"--rm", "--network", "host",
 		"-v", filepath.Join(stdlo.Must1(os.Getwd()), snapshotDir)+":/snapshot",
 		"-e", "PGPASSWORD="+snapshotTarget.Password,
-		"postgres:17.2-alpine", "pg_dump",
+		snapshotDockerImage, "pg_dump",
 		"-h", snapshotTarget.Host,
 		"-p", fmt.Sprintf("%d", snapshotTarget.Port),
 		"-U", snapshotTarget.User,
