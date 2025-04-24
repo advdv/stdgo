@@ -109,7 +109,6 @@ func Transact1[TTx, U any](
 				}
 			}()
 
-			// ctx = ContextWithTx(ctx, tx)
 			ctx = contextWithAttempts(ctx, exec.Attempts())
 
 			if res, err = fnc(ctx, tx); err != nil {

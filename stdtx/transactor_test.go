@@ -12,6 +12,7 @@ import (
 
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdtx"
+	"github.com/advdv/stdgo/stdtx/stdtxpgxv5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -228,8 +229,8 @@ func setup(t *testing.T) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Tra
 	_, err = db.Exec(ctx, `INSERT INTO test_table (id, value) VALUES (1, 100);`)
 	require.NoError(t, err)
 
-	roDrv := &countingPgxV5Driver{stdtx.NewPgxV5Driver(db, pgx.ReadOnly), 0, 0}
-	rwDrv := &countingPgxV5Driver{stdtx.NewPgxV5Driver(db, pgx.ReadWrite), 0, 0}
+	roDrv := &countingPgxV5Driver{stdtxpgxv5.New(db, stdtxpgxv5.AccessMode(pgx.ReadOnly)), 0, 0}
+	rwDrv := &countingPgxV5Driver{stdtxpgxv5.New(db), 0, 0}
 
 	return ctx,
 		stdtx.NewTransactor(roDrv),
