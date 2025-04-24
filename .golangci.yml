@@ -58,6 +58,7 @@ linters:
     - wrapcheck
     - thelper # not usefull it seems
     - tenv # deprecated
+    - dogsled # too strict
 
 issues:
   include:
