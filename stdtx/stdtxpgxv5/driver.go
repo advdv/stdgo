@@ -17,47 +17,6 @@ type driver struct {
 	opts options
 }
 
-// TxBeginSQLFunc is the signature for determining custom sql run at the start of the transaction.
-type TxBeginSQLFunc = func(context.Context, *strings.Builder, pgx.Tx) (*strings.Builder, error)
-
-type options struct {
-	TxIsoLevel         pgx.TxIsoLevel
-	txAccessMode       pgx.TxAccessMode
-	txBeginSQL         TxBeginSQLFunc // @TODO add option
-	discourageSeqScans bool           // @TODO add option
-}
-
-// Option configures the pgxv5 driver.
-type Option func(o *options)
-
-// AccessMode configure the access mode for transactions created for the driver.
-func AccessMode(v pgx.TxAccessMode) Option {
-	return func(o *options) {
-		o.txAccessMode = v
-	}
-}
-
-// DiscourageSeqScan configure the access mode for transactions created for the driver.
-func DiscourageSeqScan(v bool) Option {
-	return func(o *options) {
-		o.discourageSeqScans = v
-	}
-}
-
-// BeginWithSQL configure the access mode for transactions created for the driver.
-func BeginWithSQL(v TxBeginSQLFunc) Option {
-	return func(o *options) {
-		o.txBeginSQL = v
-	}
-}
-
-// IsolationMode configure the access mode for transactions created for the driver.
-func IsolationMode(v pgx.TxIsoLevel) Option {
-	return func(o *options) {
-		o.TxIsoLevel = v
-	}
-}
-
 // New implements the driver for pgx v5.
 func New(db *pgxpool.Pool, opts ...Option) stdtx.Driver[pgx.Tx] {
 	drv := driver{db: db}
@@ -91,6 +50,11 @@ func (d driver) setupTx(ctx context.Context, tx pgx.Tx) (err error) {
 		sql.WriteString(`SET LOCAL enable_seqscan = OFF;`)
 	}
 
+	// no sql to execute
+	if sql.String() == "" {
+		return nil
+	}
+
 	if _, err := tx.Exec(ctx, sql.String()); err != nil {
 		return fmt.Errorf("execute tx begin sql: %w", err)
 	}
@@ -101,12 +65,15 @@ func (d driver) setupTx(ctx context.Context, tx pgx.Tx) (err error) {
 // BeginTx implements the starting of a transaction.
 func (d driver) BeginTx(ctx context.Context) (pgx.Tx, error) {
 	tx, err := d.db.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   d.opts.TxIsoLevel,
+		IsoLevel:   d.opts.txIsoLevel,
 		AccessMode: d.opts.txAccessMode,
 	})
 	if err != nil {
 		return nil, err // return transparently.
 	}
+
+	// wrap it immediately so hook sql threated the same
+	tx = wtx{tx, d.opts.maxQueryPlanCosts, d.opts.txExecQueryLogLevel}
 
 	if err := d.setupTx(ctx, tx); err != nil {
 		_ = tx.Rollback(ctx)

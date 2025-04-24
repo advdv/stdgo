@@ -32,3 +32,18 @@ func attemptsFromContext(ctx context.Context) (vv int, ok bool) {
 
 	return vt, true
 }
+
+// WithNoTestForMaxQueryPlanCosts allow disabling the plan cost check.
+func WithNoTestForMaxQueryPlanCosts(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKey("no_test_for_max_query_plan_costs"), true)
+}
+
+// NoTestForMaxQueryPlanCosts returns whether the cost check is disabled.
+func NoTestForMaxQueryPlanCosts(ctx context.Context) bool {
+	v, ok := ctx.Value(ctxKey("no_test_for_max_query_plan_costs")).(bool)
+	if !ok {
+		return false
+	}
+
+	return v
+}
