@@ -32,10 +32,18 @@ func (f TestMigratorFunc) Migrate(
 	return f(tb, cfg, pcfg)
 }
 
+// EndRole defines a type that can be provided if the role that actually connects
+// to the database in tests is different from the migration role.
+type EndRole struct {
+	Username string
+	Password string
+}
+
 type PgtestdbTestMigratorParams struct {
 	fx.In
 	Migrator pgtestdb.Migrator
 	Role     *pgtestdb.Role `optional:"true"`
+	EndRole  *EndRole       `optional:"true"`
 }
 
 // NewPgtestdbTestMigrator implements the [TestMigrator] using the pgtestdb library.
@@ -65,8 +73,16 @@ func NewPgtestdbTestMigrator(params PgtestdbTestMigratorParams) TestMigrator {
 		// a copy of the pool config such that it will connect to the instance instead.
 		pcfg = pcfg.Copy()
 		pcfg.ConnConfig.Database = tcfg.Database
-		pcfg.ConnConfig.User = tcfg.User
-		pcfg.ConnConfig.Password = tcfg.Password
+
+		// we want to support the case where the actual role for tests is different from
+		// the one used for migrations.
+		if params.EndRole != nil {
+			pcfg.ConnConfig.User = params.EndRole.Username
+			pcfg.ConnConfig.Password = params.EndRole.Password
+		} else {
+			pcfg.ConnConfig.User = tcfg.User
+			pcfg.ConnConfig.Password = tcfg.Password
+		}
 
 		return pcfg, nil
 	})
