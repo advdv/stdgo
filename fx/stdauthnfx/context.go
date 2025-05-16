@@ -1,4 +1,4 @@
-package stdwebauthn
+package stdauthnfx
 
 import "context"
 
@@ -11,7 +11,7 @@ func WithIdentity(ctx context.Context, idn Identity) context.Context {
 func IdentityFromContext(ctx context.Context) Identity {
 	idn, ok := ctx.Value(ctxKey("identity")).(Identity)
 	if !ok {
-		panic("stdwebauthn: no identity in context")
+		panic("stdauthnfx: no identity in context")
 	}
 
 	return idn

@@ -1,4 +1,4 @@
-package stdwebauthn
+package stdauthnfx
 
 import (
 	"crypto/rand"

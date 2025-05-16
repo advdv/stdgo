@@ -1,5 +1,5 @@
-// Package stdwebauthn provides web client authentication.
-package stdwebauthn
+// Package stdauthnfx provides web client authentication.
+package stdauthnfx
 
 import (
 	"context"
@@ -296,5 +296,5 @@ func (a *Authentication) start(ctx context.Context) (err error) {
 
 // Provide the components.
 func Provide() fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdwebauthn", New)
+	return stdfx.ZapEnvCfgModule[Config]("stdauthn", New)
 }

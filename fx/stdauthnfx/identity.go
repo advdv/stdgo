@@ -1,4 +1,4 @@
-package stdwebauthn
+package stdauthnfx
 
 import (
 	"encoding/json"
@@ -59,11 +59,11 @@ func (idn *Authenticated) UnmarshalJSON(data []byte) error {
 type Anonymous struct{}
 
 func (idn Anonymous) MarshalJSON() ([]byte, error) {
-	panic("stdwebauthn: anonymous identity should never be serialized")
+	panic("stdauthnfx: anonymous identity should never be serialized")
 }
 
 func (idn Anonymous) UnmarshalJSON([]byte) error {
-	panic("stdwebauthn: anonymous identity should never be deserialized")
+	panic("stdauthnfx: anonymous identity should never be deserialized")
 }
 
 func (idn Anonymous) String() string { return "<anonymous>" }

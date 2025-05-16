@@ -1,10 +1,10 @@
-package stdwebauthn_test
+package stdauthnfx_test
 
 import (
 	"encoding/json"
 	"testing"
 
-	"github.com/advdv/stdgo/stdwebauthn"
+	"github.com/advdv/stdgo/fx/stdauthnfx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,12 +14,12 @@ func TestIdentity(t *testing.T) {
 	t.Run("anonymous", func(t *testing.T) {
 		t.Parallel()
 
-		require.PanicsWithValue(t, "stdwebauthn: anonymous identity should never be serialized", func() {
-			json.Marshal(stdwebauthn.Anonymous{})
+		require.PanicsWithValue(t, "stdauthnfx: anonymous identity should never be serialized", func() {
+			json.Marshal(stdauthnfx.Anonymous{})
 		})
 
-		require.PanicsWithValue(t, "stdwebauthn: anonymous identity should never be deserialized", func() {
-			var idn stdwebauthn.Anonymous
+		require.PanicsWithValue(t, "stdauthnfx: anonymous identity should never be deserialized", func() {
+			var idn stdauthnfx.Anonymous
 			json.Unmarshal([]byte(`{}`), &idn)
 		})
 	})
@@ -27,12 +27,12 @@ func TestIdentity(t *testing.T) {
 	t.Run("authenticated", func(t *testing.T) {
 		t.Parallel()
 
-		orig := stdwebauthn.NewAuthenticated("linkedin|-2190ddf", "person@example.com")
+		orig := stdauthnfx.NewAuthenticated("linkedin|-2190ddf", "person@example.com")
 
 		b, err := json.Marshal(orig)
 		require.NoError(t, err)
 
-		var got stdwebauthn.Authenticated
+		var got stdauthnfx.Authenticated
 		err = json.Unmarshal(b, &got)
 		require.NoError(t, err)
 

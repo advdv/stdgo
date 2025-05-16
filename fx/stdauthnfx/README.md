@@ -1,4 +1,4 @@
-# stdwebauthn
+# stdauthnfx
 
 ## Example id tokens from providers
 Note1: 	// Linkedin does not support "public" subject tokens. So if we need to rotate the Linkedin oidc client_id/secret

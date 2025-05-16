@@ -1,4 +1,4 @@
-package stdwebauthn_test
+package stdauthnfx_test
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/advdv/bhttp"
+	"github.com/advdv/stdgo/fx/stdauthnfx"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
-	"github.com/advdv/stdgo/stdwebauthn"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
@@ -19,7 +19,7 @@ import (
 
 func TestAuthentication(t *testing.T) {
 	t.Parallel()
-	authn := setup(t, stdwebauthn.NewAuthenticated("microsoft|cc77a22a-5d85-4fa3-b672-18e2d2221474", "ada@example.com"))
+	authn := setup(t, stdauthnfx.NewAuthenticated("microsoft|cc77a22a-5d85-4fa3-b672-18e2d2221474", "ada@example.com"))
 	require.NotNil(t, authn)
 
 	t.Run("login", func(t *testing.T) {
@@ -60,15 +60,15 @@ func TestAuthentication(t *testing.T) {
 				req.AddCookie(cookies[1])
 				bresp := bhttp.NewResponseWriter(rec, -1)
 
-				var idn stdwebauthn.Identity
+				var idn stdauthnfx.Identity
 				err := authn.SessionMiddleware()(bhttp.BareHandlerFunc(func(w bhttp.ResponseWriter, r *http.Request) error {
-					idn = stdwebauthn.IdentityFromContext(r.Context())
+					idn = stdauthnfx.IdentityFromContext(r.Context())
 					return nil
 				})).ServeBareBHTTP(bresp, req)
 				require.NoError(t, err)
 
-				require.False(t, stdwebauthn.IsAnonymous(idn))
-				authIdn, ok := idn.(stdwebauthn.Authenticated)
+				require.False(t, stdauthnfx.IsAnonymous(idn))
+				authIdn, ok := idn.(stdauthnfx.Authenticated)
 				require.True(t, ok)
 				require.Equal(t, "ada@example.com", authIdn.Email())
 			})
@@ -93,14 +93,14 @@ func TestAuthentication(t *testing.T) {
 		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx(t), http.MethodGet, "/", nil)
 		bresp := bhttp.NewResponseWriter(rec, -1)
 
-		var idn stdwebauthn.Identity
+		var idn stdauthnfx.Identity
 		err := authn.SessionMiddleware()(bhttp.BareHandlerFunc(func(w bhttp.ResponseWriter, r *http.Request) error {
-			idn = stdwebauthn.IdentityFromContext(r.Context())
+			idn = stdauthnfx.IdentityFromContext(r.Context())
 			return nil
 		})).ServeBareBHTTP(bresp, req)
 		require.NoError(t, err)
 
-		require.True(t, stdwebauthn.IsAnonymous(idn))
+		require.True(t, stdauthnfx.IsAnonymous(idn))
 	})
 
 	t.Run("logout", func(t *testing.T) {
@@ -127,9 +127,9 @@ func TestAuthentication(t *testing.T) {
 		bresp := bhttp.NewResponseWriter(rec, -1)
 		req.AddCookie(&http.Cookie{Name: "AUTHSESS"})
 
-		var idn stdwebauthn.Identity
+		var idn stdauthnfx.Identity
 		err := authn.SessionMiddleware()(bhttp.BareHandlerFunc(func(w bhttp.ResponseWriter, r *http.Request) error {
-			idn = stdwebauthn.IdentityFromContext(r.Context())
+			idn = stdauthnfx.IdentityFromContext(r.Context())
 			return nil
 		})).ServeBareBHTTP(bresp, req)
 		require.Error(t, err, "Bad request: invalid session")
@@ -170,24 +170,24 @@ func assertUnsupportedProvider(tb testing.TB, hdlr bhttp.Handler[context.Context
 	require.Equal(tb, bhttp.CodeBadRequest, herr.Code())
 }
 
-func setup(tb testing.TB, idn stdwebauthn.Identity) *stdwebauthn.Authentication {
+func setup(tb testing.TB, idn stdauthnfx.Identity) *stdauthnfx.Authentication {
 	var deps struct {
 		fx.In
-		*stdwebauthn.Authentication
+		*stdauthnfx.Authentication
 	}
 
 	app := fxtest.New(tb,
 		fx.Supply(stdenvcfg.Environment{
-			"STDWEBAUTHN_BASE_CALLBACK_URL":    "http://localhost:8080/",
-			"STDWEBAUTHN_SESSION_KEY_PAIRS":    "cd111d0210ade2f4e9ae1c070bc83152fc64ea5a24dde4bd571f26a18c97f1f1,cd111d0210ade2f4e9ae1c070bc83152fc64ea5a24dde4bd571f26a18c97f1f1",
-			"STDWEBAUTHN_ENABLED_PROVIDERS":    "google",
-			"STDWEBAUTHN_GOOGLE_CLIENT_ID":     "g-client-id",
-			"STDWEBAUTHN_GOOGLE_CLIENT_SECRET": "g-client-secret",
-			"STDWEBAUTHN_GOOGLE_ISSUER":        "https://accounts.google.com",
+			"STDAUTHN_BASE_CALLBACK_URL":    "http://localhost:8080/",
+			"STDAUTHN_SESSION_KEY_PAIRS":    "cd111d0210ade2f4e9ae1c070bc83152fc64ea5a24dde4bd571f26a18c97f1f1,cd111d0210ade2f4e9ae1c070bc83152fc64ea5a24dde4bd571f26a18c97f1f1",
+			"STDAUTHN_ENABLED_PROVIDERS":    "google",
+			"STDAUTHN_GOOGLE_CLIENT_ID":     "g-client-id",
+			"STDAUTHN_GOOGLE_CLIENT_SECRET": "g-client-secret",
+			"STDAUTHN_GOOGLE_ISSUER":        "https://accounts.google.com",
 		}),
 		fx.Populate(&deps),
-		stdwebauthn.Provide(),
-		fx.Provide(func() stdwebauthn.Backend { return stdwebauthn.NewFixedIdentityBackend(idn) }),
+		stdauthnfx.Provide(),
+		fx.Provide(func() stdauthnfx.Backend { return stdauthnfx.NewFixedIdentityBackend(idn) }),
 	)
 
 	app.RequireStart()
