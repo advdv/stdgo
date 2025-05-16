@@ -135,6 +135,23 @@ func TestAuthentication(t *testing.T) {
 		require.Error(t, err, "Bad request: invalid session")
 		require.Nil(t, idn) // since handler should never be reached in this case.
 	})
+
+	t.Run("continue-session-fail-but-logout", func(t *testing.T) {
+		t.Parallel()
+
+		rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx(t), http.MethodGet, "/auth/logout", nil)
+		bresp := bhttp.NewResponseWriter(rec, -1)
+		req.AddCookie(&http.Cookie{Name: "AUTHSESS"})
+
+		var idn stdauthnfx.Identity
+		err := authn.SessionMiddleware()(bhttp.BareHandlerFunc(func(w bhttp.ResponseWriter, r *http.Request) error {
+			idn = stdauthnfx.IdentityFromContext(r.Context())
+			return nil
+		})).ServeBareBHTTP(bresp, req)
+
+		require.NoError(t, err)
+		require.True(t, stdauthnfx.IsAnonymous(idn))
+	})
 }
 
 func ctx(tb testing.TB) context.Context {

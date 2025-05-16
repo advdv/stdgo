@@ -32,17 +32,20 @@ func (a *Authentication) startSession(idn Identity, resp http.ResponseWriter, re
 }
 
 // startSession will end the user session by removing the cookie.
-func (a *Authentication) endSession(resp http.ResponseWriter, req *http.Request) error {
-	sess, err := a.sessions.Get(req, a.cfg.SessionCookieName)
-	if err != nil {
-		return fmt.Errorf("get session: %w", err)
+func (a *Authentication) endSession(resp http.ResponseWriter, _ *http.Request) error {
+	// we're creating a cookie manually here, because the user should be able to logout even if they have
+	// an invalid session that the library can't decode. Some server side configuration can cause this (key switching)
+	// so we can't  fully blame the client and let it figure this out.
+	cookie := http.Cookie{
+		Name:     a.cfg.SessionCookieName,
+		MaxAge:   -1,
+		Path:     a.cfg.SessionCookiePath,
+		SameSite: a.cfg.SessionCookieSameSite,
+		Secure:   a.cfg.SessionCookieSecure,
+		HttpOnly: a.cfg.SessionCookieHTTPOnly,
 	}
 
-	sess.Options.MaxAge = -1
-	if err := sess.Save(req, resp); err != nil {
-		return fmt.Errorf("save session: %w", err)
-	}
-
+	http.SetCookie(resp, &cookie)
 	return nil
 }
 
@@ -82,13 +85,16 @@ func (a *Authentication) SessionMiddleware() bhttp.Middleware {
 
 			idn, err := a.continueSession(req)
 			if err != nil {
-				if endErr := a.endSession(resp, req); endErr != nil {
-					logs.Error("failed to end session after error in continuing session", zap.Error(endErr))
+				// we need the logout endpoint to be always accessible in case the cookie became invalid and the
+				// user is trying to reset their session.
+				if req.URL.Path == a.cfg.LogoutPath {
+					logs.Info("invalid session but the client is logging out, anonymously", zap.Error(err))
+					return next.ServeBareBHTTP(resp, req.WithContext(WithIdentity(req.Context(), Anonymous{})))
 				}
 
+				// at this point the client has ended up with an invalid session. It needs to logout and log back in.
 				logs.Error("failed to continue session", zap.Error(err))
-
-				return bhttp.NewError(bhttp.CodeBadRequest, errors.New("invalid session"))
+				return bhttp.NewError(bhttp.CodeBadRequest, errors.New("invalid session, logout and log back in"))
 			}
 
 			return next.ServeBareBHTTP(resp, req.WithContext(WithIdentity(req.Context(), idn)))

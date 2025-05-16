@@ -45,6 +45,14 @@ type Config struct {
 	SessionKeyPairs []stdenvcfg.HexBytes `env:"SESSION_KEY_PAIRS"`
 	// the max age of the session cookie, in seconds. Defaults to a year.
 	SessionDefaultMaxAgeSeconds int64 `env:"SESSION_DEFAULT_MAX_AGE_SECONDS" envDefault:"31556926"`
+	// session cookie secure configures the session cookies for https only
+	SessionCookieSecure bool `env:"SESSION_COOKIE_SECURE" envDefault:"true"`
+	// session cookie secure configures the session cookies to not be reachable by javascript.
+	SessionCookieHTTPOnly bool `env:"SESSION_COOKIE_HTTP_ONLY" envDefault:"true"`
+	// what cross-site setting to use for the session cookies, defaults to "lax"
+	SessionCookieSameSite http.SameSite `env:"SESSION_COOKIE_SAME_SITE" envDefault:"2"`
+	// what path to configure for our session cookies
+	SessionCookiePath string `env:"SESSION_COOKIE_PATH" envDefault:"/"`
 
 	// how long the session that keeps state between login and callback remains valid.
 	StateMaxAgeSeconds int `env:"STATE_MAX_AGE_SECONDS" envDefault:"3600"`
@@ -54,6 +62,13 @@ type Config struct {
 	SessionCookieName string `env:"SESSION_COOKIE_NAME" envDefault:"AUTHSESS"`
 	// white list of hosts where the backend will redirect to.
 	AllowedRedirectHosts []string `env:"ALLOWED_REDIRECT_HOSTS"`
+
+	// configure on which path the login handler is served.
+	LoginPath string `env:"LOGIN_PATH" envDefault:"/auth/{provider}/login"`
+	// configure on which path the callback handler is served.
+	CallbackPath string `env:"CALLBACK_PATH" envDefault:"/auth/{provider}/callback"`
+	// configure on which path the logout path is served.
+	LogoutPath string `env:"LOGOUT_PATH" envDefault:"/auth/logout"`
 
 	// configuration for each supported social provider.
 	Google    providerConfig `envPrefix:"GOOGLE_"`
@@ -100,11 +115,11 @@ func newCookieStore(cfg Config) (*sessions.CookieStore, error) {
 	store := &sessions.CookieStore{
 		Codecs: securecookie.CodecsFromPairs(pairs...),
 		Options: &sessions.Options{
-			Path:     "/",
+			Path:     cfg.SessionCookiePath,
 			MaxAge:   int(cfg.SessionDefaultMaxAgeSeconds),
-			SameSite: http.SameSiteLaxMode,
-			Secure:   true,
-			HttpOnly: true,
+			SameSite: cfg.SessionCookieSameSite,
+			Secure:   cfg.SessionCookieSecure,
+			HttpOnly: cfg.SessionCookieHTTPOnly,
 		},
 	}
 
@@ -138,7 +153,7 @@ func New(params Params) (res Result, err error) {
 
 // Login implements the start of the authentication flow.
 func (a *Authentication) Login() (string, bhttp.HandlerFunc[context.Context]) {
-	return "/auth/{provider}/login", func(_ context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
+	return a.cfg.LoginPath, func(_ context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
 		provider, err := a.getProvider(req)
 		if err != nil {
 			return err
@@ -163,7 +178,7 @@ func (a *Authentication) Login() (string, bhttp.HandlerFunc[context.Context]) {
 
 // Callback implements the return of the client from the provider.
 func (a *Authentication) Callback() (string, bhttp.HandlerFunc[context.Context]) {
-	return "/auth/{provider}/callback", func(ctx context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
+	return a.cfg.CallbackPath, func(ctx context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
 		provider, err := a.getProvider(req)
 		if err != nil {
 			return err
@@ -195,7 +210,7 @@ func (a *Authentication) Callback() (string, bhttp.HandlerFunc[context.Context])
 }
 
 func (a *Authentication) Logout() (string, bhttp.HandlerFunc[context.Context]) {
-	return "/auth/logout", func(_ context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
+	return a.cfg.LogoutPath, func(_ context.Context, resp bhttp.ResponseWriter, req *http.Request) error {
 		if err := a.endSession(resp, req); err != nil {
 			return fmt.Errorf("end session: %w", err)
 		}
@@ -279,7 +294,8 @@ func (a *Authentication) start(ctx context.Context) (err error) {
 			ClientSecret: envConfig.ClientSecret,
 			Scopes:       envConfig.Scopes,
 			Endpoint:     provider.oidc.Endpoint(),
-			RedirectURL:  fmt.Sprintf("%s/auth/%s/callback", a.cfg.BaseCallbackURL, providerName),
+			RedirectURL: fmt.Sprintf("%s%s", a.cfg.BaseCallbackURL, strings.Replace(
+				a.cfg.CallbackPath, "{provider}", provider.kind.String(), 1)),
 		}
 
 		a.mu.Lock()
