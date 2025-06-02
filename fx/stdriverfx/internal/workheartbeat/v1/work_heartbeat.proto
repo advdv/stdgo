@@ -1,0 +1,16 @@
+edition = "2023";
+
+package internal.work.workheartbeat.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+
+// Args describe possible arguments for the work.
+message Args {
+  google.protobuf.Duration block_for = 1 [(buf.validate.field).required = true];
+}
+
+// Output from the work.
+message Output {
+  google.protobuf.Duration block_took = 1 [(buf.validate.field).required = true];
+}
