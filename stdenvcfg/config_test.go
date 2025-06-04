@@ -38,3 +38,23 @@ func TestConfigProvidingPrefix(t *testing.T) {
 	fxtest.New(t, fx.Populate(&cfg1), stdenvcfg.Provide[Conf1]("FIX_"))
 	assert.Equal(t, "bar", cfg1.Foo)
 }
+
+func TestConfigProvideNamed(t *testing.T) {
+	t.Setenv("FIX_AB_FOO", "bar")
+	t.Setenv("FIX_BB_FOO", "dar")
+
+	var deps struct {
+		fx.In
+		CfgA Conf1 `name:"ab"`
+		CfgB Conf1 `name:"bb"`
+	}
+
+	fxtest.New(t,
+		fx.Populate(&deps),
+		stdenvcfg.ProvideNamed[Conf1]("ab", "FIX_"),
+		stdenvcfg.ProvideNamed[Conf1]("bb", "FIX_"),
+	)
+
+	assert.Equal(t, "bar", deps.CfgA.Foo)
+	assert.Equal(t, "dar", deps.CfgB.Foo)
+}

@@ -33,9 +33,21 @@ func New(Params) (Result, error) { return Result{Bar: Bar{}}, nil }
 
 var Module1 = stdfx.ZapEnvCfgModule[Config]("foo", New)
 
+var Module2 = stdfx.NamedNoProvideZapEnvCfgModule[Config]("foo", "a", fx.Provide(New))
+
 func TestZapCfgModule(t *testing.T) {
 	var bar Bar
 	app := fxtest.New(t, Module1, fx.Provide(zap.NewExample), fx.Populate(&bar))
+	app.RequireStart()
+	app.RequireStop()
+}
+
+func TestNamedZapCfgModule(t *testing.T) {
+	var deps struct {
+		fx.In
+		Cfg Config `name:"a"`
+	}
+	app := fxtest.New(t, Module2, fx.Provide(zap.NewExample), fx.Populate(&deps))
 	app.RequireStart()
 	app.RequireStop()
 }

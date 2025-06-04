@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/iancoleman/strcase"
 	"go.uber.org/fx"
 )
 
@@ -38,6 +39,19 @@ func Provide[T any](prefix ...string) fx.Option {
 	return fx.Provide(fx.Annotate(
 		envConfigurer[T](prefix...),
 		fx.ParamTags(`optional:"true"`, `optional:"true"`)))
+}
+
+// ProvideNamed configuration T as an fx dependency that parses the environment with an optional prefix.
+func ProvideNamed[T any](name string, prefix ...string) fx.Option {
+	if len(prefix) > 0 {
+		prefix[0] += strcase.ToScreamingSnake(name) + "_"
+	}
+
+	return fx.Provide(fx.Annotate(
+		envConfigurer[T](prefix...),
+		fx.ParamTags(`optional:"true"`, `optional:"true"`),
+		fx.ResultTags(`name:"`+name+`"`),
+	))
 }
 
 // ProvideEnvironment provides env options with environment options pre-set. Useful for testing.

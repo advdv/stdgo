@@ -19,6 +19,7 @@ import (
 	"github.com/advdv/stdgo/stdtx"
 	"github.com/advdv/stdgo/stdtx/stdtxpgxv5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -67,7 +68,12 @@ func setup(tb testing.TB, populateMore ...any) (context.Context, *stdriverfx.Wor
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdpgxfx.TestProvide(tb, testsnapshot.Migrator, stdpgxfx.NewPgxV5Driver(), "rw"),
+		stdpgxfx.TestProvide(tb, testsnapshot.Migrator, stdpgxfx.NewPgxV5Driver(), "rw", "rui"),
+		stdpgxfx.ProvideDeriver("rui", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
+			base.ConnConfig.RuntimeParams["search_path"] = "workers" // so the ui can find the search path
+			return base
+		}),
+
 		fx.Provide(fx.Annotate(stdtxpgxv5.New, fx.ParamTags(`name:"rw"`))),
 		fx.Provide(fx.Annotate(stdtx.NewTransactor[pgx.Tx], fx.ResultTags(`name:"rw"`))),
 		fx.Supply(

@@ -46,45 +46,34 @@ func newListener(ap netip.AddrPort) (*net.TCPListener, error) {
 	return ln, nil
 }
 
-// Params describe the fx parameters.
-type Params struct {
-	fx.In
-	fx.Lifecycle
-
-	Config   Config
-	Logs     *zap.Logger
-	Handler  http.Handler
-	Listener *net.TCPListener
-}
-
-// Result describe the fx results.
-type Result struct {
-	fx.Out
-	Server *http.Server
-}
-
 // New inits the http server.
-func New(params Params) (Result, error) {
+func New(
+	lc fx.Lifecycle,
+	hdlr http.Handler,
+	lnr *net.TCPListener,
+	cfg Config,
+	logs *zap.Logger,
+) (*http.Server, error) {
 	srv := &http.Server{
-		ReadTimeout:       params.Config.ReadTimeout,
-		ReadHeaderTimeout: params.Config.ReadTimeout,
-		WriteTimeout:      params.Config.WriteTimeout,
-		IdleTimeout:       params.Config.IdleTimeout,
-		Handler:           params.Handler,
-		ErrorLog:          zap.NewStdLog(params.Logs),
+		ReadTimeout:       cfg.ReadTimeout,
+		ReadHeaderTimeout: cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		Handler:           hdlr,
+		ErrorLog:          zap.NewStdLog(logs),
 	}
 
-	params.Lifecycle.Append(fx.Hook{
+	lc.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			go srv.Serve(params.Listener) //nolint:errcheck
+			go srv.Serve(lnr) //nolint:errcheck
 
-			params.Logs.Info("http server started", zap.Stringer("addr", params.Listener.Addr()))
+			logs.Info("http server started", zap.Stringer("addr", lnr.Addr()))
 
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			dl, hasdl := ctx.Deadline()
-			params.Logs.Info("shutting down http server", zap.Bool("has_dl", hasdl), zap.Duration("dl", time.Until(dl)))
+			logs.Info("shutting down http server", zap.Bool("has_dl", hasdl), zap.Duration("dl", time.Until(dl)))
 
 			if err := srv.Shutdown(ctx); err != nil {
 				return fmt.Errorf("failed to shut down: %w", err)
@@ -94,14 +83,36 @@ func New(params Params) (Result, error) {
 		},
 	})
 
-	return Result{Server: srv}, nil
+	return srv, nil
 }
 
 // Provide dependencies.
-func Provide() fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdhttpserver", New,
-		fx.Provide(newAddr),
-		fx.Provide(fx.Private, newListener),
-		fx.Invoke(func(*http.Server) {}),
-	)
+func Provide(name ...string) fx.Option {
+	newAnns := []fx.Annotation{}
+	addrAnns := []fx.Annotation{}
+	lnAnns := []fx.Annotation{}
+	invAnns := []fx.Annotation{}
+	if len(name) > 0 {
+		newAnns = []fx.Annotation{fx.ParamTags(``, tag(name[0]), tag(name[0]), tag(name[0])), fx.ResultTags(tag(name[0]))}
+		addrAnns = []fx.Annotation{fx.ParamTags(tag(name[0])), fx.ResultTags(tag(name[0]))}
+		lnAnns = []fx.Annotation{fx.ParamTags(tag(name[0])), fx.ResultTags(tag(name[0]))}
+		invAnns = []fx.Annotation{fx.ParamTags(tag(name[0]))}
+	}
+
+	opts := []fx.Option{
+		fx.Provide(fx.Annotate(New, newAnns...)),
+		fx.Provide(fx.Annotate(newAddr, addrAnns...)),
+		fx.Provide(fx.Annotate(newListener, lnAnns...), fx.Private),
+		fx.Invoke(fx.Annotate(func(*http.Server) {}, invAnns...)),
+	}
+
+	if len(name) < 1 {
+		return stdfx.NoProvideZapEnvCfgModule[Config]("stdhttpserver", opts...)
+	}
+
+	return stdfx.NamedNoProvideZapEnvCfgModule[Config]("stdhttpserver", name[0], opts...)
+}
+
+func tag(name string) string {
+	return fmt.Sprintf(`name:"%s"`, name)
 }

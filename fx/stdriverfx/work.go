@@ -210,6 +210,7 @@ func Provide(cbf ...ClientBuilderFunc) fx.Option {
 		fx.Provide(newRiverConfig, fx.Private),
 		fx.Provide(fx.Annotate(cbf[0], fx.ParamTags(`name:"rw"`))),
 		fx.Provide(newRiverWorkers),
+		fx.Provide(NewUIServer),
 
 		// ensure the client is actually started
 		fx.Invoke(func(*Workers) {}),
