@@ -27,6 +27,12 @@ type (
 		RW        *stdtx.Transactor[pgx.Tx] `name:"rw"`
 		Validator protovalidate.Validator
 	}
+
+	Result struct {
+		fx.Out
+		Worker    river.Worker[*workheartbeatv1.Args]
+		Periodics stdriverfx.PeriodicWorker `group:"periodic_workers"`
+	}
 )
 
 // worker implements working the job.
@@ -35,14 +41,23 @@ type worker struct {
 	*stdriverfx.TransactWorker[*workheartbeatv1.Args, *workheartbeatv1.Output]
 }
 
-func New(par Params) (river.Worker[*workheartbeatv1.Args], error) {
+func New(par Params) (Result, error) {
 	res := &worker{}
 	res.TransactWorker = stdriverfx.NewTransactWorker(par.RW, par.Validator, res.work)
-	return res, nil
+	return Result{Worker: res, Periodics: res}, nil
 }
 
 func (w worker) Timeout(*river.Job[*workheartbeatv1.Args]) time.Duration {
 	return time.Second * 10
+}
+
+func (w worker) PeriodicJobs() []*river.PeriodicJob {
+	return []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(time.Second*10),
+			func() (river.JobArgs, *river.InsertOpts) {
+				return &workheartbeatv1.Args{}, &river.InsertOpts{MaxAttempts: 1}
+			}, &river.PeriodicJobOpts{RunOnStart: true}),
+	}
 }
 
 func (w worker) work(

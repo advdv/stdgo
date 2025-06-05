@@ -156,17 +156,35 @@ func (w Workers) stop(ctx context.Context) error {
 	return nil
 }
 
+// PeriodicWorker interface can be implemented by Workers to make them configure periodic jobs
+// onto the configuration.
+type PeriodicWorker interface {
+	PeriodicJobs() []*river.PeriodicJob
+}
+
 // newRiverConfig inits the configuration as shared between the regular river queue client. And the Pro one.
-func newRiverConfig(wrks *workers, logs *zap.Logger) river.Config {
-	slogs := slog.New(slogzap.Option{Logger: logs}.NewZapHandler())
+func newRiverConfig(par struct {
+	fx.In
+	Workers   *workers
+	Logs      *zap.Logger
+	Periodics []PeriodicWorker `group:"periodic_workers"`
+},
+) river.Config {
+	slogs := slog.New(slogzap.Option{Logger: par.Logs}.NewZapHandler())
+
+	var periodics []*river.PeriodicJob
+	for _, periodic := range par.Periodics {
+		periodics = append(periodics, periodic.PeriodicJobs()...)
+	}
 
 	return river.Config{
 		Logger:  slogs,
 		Schema:  "workers",
-		Workers: wrks.Workers,
+		Workers: par.Workers.Workers,
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 100},
 		},
+		PeriodicJobs: periodics,
 		Middleware: []rivertype.Middleware{
 			NewMiddleware(),
 		},
@@ -207,7 +225,7 @@ func Provide(cbf ...ClientBuilderFunc) fx.Option {
 
 	return stdfx.ZapEnvCfgModule[Config]("stdriver",
 		New,
-		fx.Provide(newRiverConfig, fx.Private),
+		fx.Provide(newRiverConfig),
 		fx.Provide(fx.Annotate(cbf[0], fx.ParamTags(`name:"rw"`))),
 		fx.Provide(newRiverWorkers),
 		fx.Provide(NewUIServer),

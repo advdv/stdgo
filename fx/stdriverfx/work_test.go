@@ -40,11 +40,15 @@ func TestSetup(t *testing.T) {
 		require.Len(t, obs.FilterMessageSnippet("soft stop succeeded, no hard stop necessary").All(), 1)
 	})
 
-	ctx, wrks, txr := setup(t, &obs)
+	var rcfg river.Config
+
+	ctx, wrks, txr := setup(t, &obs, &rcfg)
 	require.NotNil(t, ctx)
 	require.NotNil(t, wrks)
 	require.NotNil(t, txr)
 	require.NoError(t, wrks.Ping(t.Context()))
+
+	require.Len(t, rcfg.PeriodicJobs, 1)
 }
 
 // setup will use fx to setup a workers instance.
