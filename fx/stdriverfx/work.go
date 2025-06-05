@@ -186,7 +186,7 @@ func newRiverConfig(par struct {
 		},
 		PeriodicJobs: periodics,
 		Middleware: []rivertype.Middleware{
-			NewMiddleware(),
+			loggerMiddleware(),
 		},
 	}
 }
