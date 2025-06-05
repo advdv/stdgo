@@ -118,7 +118,7 @@ func TestHardStop(t *testing.T) {
 	args := workheartbeatv1.Args_builder{BlockFor: durationpb.New(time.Hour)}.Build() // long time, to trigger hard stop
 	stdrivertest.EnqueueJob(ctx, t, txr, heartbeat, args)
 
-	jobs := stdrivertest.WaitForJob(ctx, t, txr, wrks, args, 1,
+	jobs := stdrivertest.WaitForJobsByKind(ctx, t, txr, wrks, args.Kind(), 1,
 		stdrivertest.JobInState(rivertype.JobStateRunning))
 	require.Len(t, jobs, 1)
 }
@@ -138,7 +138,7 @@ func TestSoftStopAfterCompleted(t *testing.T) {
 
 	// wait for a job to be completed and to have the log show up in the metadata. NOTE: somehow the metadata
 	// is written to the db async so we can't just wait and assert the metadata.
-	jobs := stdrivertest.WaitForJob(ctx, t, txr, wrks, args, 1,
+	jobs := stdrivertest.WaitForJobsByKind(ctx, t, txr, wrks, args.Kind(), 1,
 		func(job *rivertype.JobRow) bool {
 			return stdrivertest.JobInState(rivertype.JobStateCompleted)(job) &&
 				bytes.Contains(job.Metadata, []byte("heartbeat job"))

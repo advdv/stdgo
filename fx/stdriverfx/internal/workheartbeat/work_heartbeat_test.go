@@ -37,7 +37,7 @@ func TestHeartbeat(t *testing.T) {
 	args := workheartbeatv1.Args_builder{BlockFor: durationpb.New(time.Millisecond)}.Build()
 	stdrivertest.EnqueueJob(ctx, t, txr, heartbeat, args)
 
-	jobs := stdrivertest.WaitForJob(ctx, t, txr, wrks, args, 1,
+	jobs := stdrivertest.WaitForJobsByKind(ctx, t, txr, wrks, args.Kind(), 1,
 		stdrivertest.JobInState(rivertype.JobStateRunning, rivertype.JobStateCompleted))
 	require.Len(t, jobs, 1)
 }

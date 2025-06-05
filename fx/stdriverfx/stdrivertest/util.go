@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,8 +21,8 @@ func JobInState(expectState ...rivertype.JobState) func(jr *rivertype.JobRow) bo
 	}
 }
 
-// WaitForJob will wait for a job to be in one of the provided states.
-func WaitForJob(
+// WaitForJobsByKind will wait for N jobs of a certain kind to be in one of the provided states.
+func WaitForJobsByKind(
 	ctx context.Context,
 	tb testing.TB,
 	txr *stdtx.Transactor[pgx.Tx],
@@ -32,26 +31,34 @@ func WaitForJob(
 			ctx context.Context, tx pgx.Tx, kind string, moreKinds ...string,
 		) (*river.JobListResult, error)
 	},
-	args stdriverfx.JobArgs,
-	expectN int,
-	stateFn func(job *rivertype.JobRow) bool,
-) (jobs []*rivertype.JobRow) {
-	tb.Helper()
-	require.EventuallyWithT(tb, func(tb *assert.CollectT) {
-		require.NoError(tb, stdtx.Transact0(ctx, txr, func(ctx context.Context, tx pgx.Tx) error {
-			res, err := wrk.GetJobByKinds(ctx, tx, args.Kind())
-			require.NoError(tb, err)
-			require.Len(tb, res.Jobs, expectN)
-			for _, job := range res.Jobs {
-				require.True(tb, stateFn(job), "no job every reached the required shape")
-			}
+	kind string,
+	expN int,
+	filterFn func(job *rivertype.JobRow) bool,
+) (res []*rivertype.JobRow) {
+	require.Eventually(tb, func() bool {
+		jobs, err := stdtx.Transact1(ctx, txr, func(ctx context.Context, tx pgx.Tx) (*river.JobListResult, error) {
+			return wrk.GetJobByKinds(ctx, tx, kind)
+		})
+		require.NoError(tb, err)
 
-			jobs = res.Jobs
-			return nil
-		}))
+		// filter the rows we're interested in
+		var filtered []*rivertype.JobRow
+		for _, job := range jobs.Jobs {
+			if filterFn(job) {
+				filtered = append(filtered, job)
+			}
+		}
+
+		// not (yet) the expected number of rows.
+		if len(filtered) != expN {
+			return false
+		}
+
+		res = filtered
+		return true
 	}, time.Second*3, time.Millisecond*10)
 
-	return jobs
+	return res
 }
 
 // EnqueueJob will enqueue a job for testing.
