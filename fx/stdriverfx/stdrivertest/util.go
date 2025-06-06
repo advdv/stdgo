@@ -3,6 +3,7 @@ package stdrivertest
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -15,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func JobInState(expectState ...rivertype.JobState) func(jr *rivertype.JobRow) bool {
-	return func(jr *rivertype.JobRow) bool {
+func JobInState(expectState ...rivertype.JobState) func(jr *rivertype.JobRow, _ error) bool {
+	return func(jr *rivertype.JobRow, _ error) bool {
 		return slices.Contains(expectState, jr.State)
 	}
 }
@@ -33,7 +34,7 @@ func WaitForJobsByKind(
 	},
 	kind string,
 	expN int,
-	filterFn func(job *rivertype.JobRow) bool,
+	filterFn func(job *rivertype.JobRow, jerr error) bool,
 ) (res []*rivertype.JobRow) {
 	require.Eventually(tb, func() bool {
 		jobs, err := stdtx.Transact1(ctx, txr, func(ctx context.Context, tx pgx.Tx) (*river.JobListResult, error) {
@@ -44,7 +45,17 @@ func WaitForJobsByKind(
 		// filter the rows we're interested in
 		var filtered []*rivertype.JobRow
 		for _, job := range jobs.Jobs {
-			if filterFn(job) {
+			// gather any errors we observe in eligible jobs. To make it easier to observe them in
+			// tests when we're waiting for jobs. It is important to note though that it is not guaranteed
+			// that all errors are observed as they might occur and get fixed right between polling windows.
+			var jobErrs error
+			if len(job.Errors) > 0 {
+				for _, err := range job.Errors {
+					jobErrs = errors.Join(jobErrs, errors.New(err.Error))
+				}
+			}
+
+			if filterFn(job, jobErrs) {
 				filtered = append(filtered, job)
 			}
 		}

@@ -139,8 +139,8 @@ func TestSoftStopAfterCompleted(t *testing.T) {
 	// wait for a job to be completed and to have the log show up in the metadata. NOTE: somehow the metadata
 	// is written to the db async so we can't just wait and assert the metadata.
 	jobs := stdrivertest.WaitForJobsByKind(ctx, t, txr, wrks, args.Kind(), 1,
-		func(job *rivertype.JobRow) bool {
-			return stdrivertest.JobInState(rivertype.JobStateCompleted)(job) &&
+		func(job *rivertype.JobRow, _ error) bool {
+			return stdrivertest.JobInState(rivertype.JobStateCompleted)(job, nil) &&
 				bytes.Contains(job.Metadata, []byte("heartbeat job"))
 		})
 	require.Len(t, jobs, 1)
