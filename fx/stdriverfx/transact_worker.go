@@ -50,7 +50,9 @@ func (w TransactWorker[A, O]) transact(
 		dl, ok := ctx.Deadline()
 		if ok {
 			txTimeout := time.Until(dl.Add(time.Second * 5)).Milliseconds() // add a grace period
-			if _, err := tx.Exec(ctx, fmt.Sprintf(`
+			if _, err := tx.Exec(
+				stdtx.WithNoTestForMaxQueryPlanCosts(ctx), // will fail with SET SESSION queries.
+				fmt.Sprintf(`
 				SET SESSION idle_in_transaction_session_timeout = %d;
 				SET SESSION transaction_timeout = %d;
 			`, txTimeout, txTimeout)); err != nil {
