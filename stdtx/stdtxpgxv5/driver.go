@@ -55,6 +55,7 @@ func (d driver) setupTx(ctx context.Context, tx pgx.Tx) (err error) {
 		return nil
 	}
 
+	ctx = stdtx.WithNoTestForMaxQueryPlanCosts(ctx)
 	if _, err := tx.Exec(ctx, sql.String()); err != nil {
 		return fmt.Errorf("execute tx begin sql: %w", err)
 	}
