@@ -13,6 +13,7 @@ import (
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdtx"
 	"github.com/advdv/stdgo/stdtx/stdtxpgxv5"
+	"github.com/advdv/stdgo/stdtx/stdtxtest"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -67,6 +68,16 @@ func TestBasicWriteTransaction(t *testing.T) {
 	})
 
 	require.NoError(t, err)
+}
+
+func TestWriteWithTestUtil(t *testing.T) {
+	ctx, _, rw, _, _, _ := setup(t)
+
+	stdtxtest.Transact(ctx, t, rw, func(ctx context.Context, t *testing.T, tx pgx.Tx) error {
+		require.Equal(t, 1, stdtx.AttemptFromContext(ctx))
+		require.NotNil(t, tx)
+		return nil
+	})
 }
 
 func TestAlreadyInTransactionScope(t *testing.T) {
