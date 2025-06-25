@@ -36,6 +36,8 @@ var (
 	noStaging bool
 	// parameter names that are always un-cached from the context so they'll have live values.
 	noCacheParameterNames = []string{}
+	// directory for the cdk main.go.
+	cdkMainDirectory string
 )
 
 // DockerBuild describes a Docker image to be build.
@@ -53,6 +55,7 @@ func Init(
 	executionPolicies []string,
 	noStagingEnv bool,
 	ssmNoCacheParameterNames []string,
+	cdkDir string,
 ) {
 	region = awsRegion
 	profile = awsProfile
@@ -62,6 +65,7 @@ func Init(
 	policies = executionPolicies
 	noStaging = noStagingEnv
 	noCacheParameterNames = ssmNoCacheParameterNames
+	cdkMainDirectory = cdkDir
 }
 
 //go:embed developer-boundary.yaml
@@ -166,7 +170,7 @@ func DeployStack(env string, stack string) error {
 
 // LiveContextParams updates the cdk context json with live parameter values.
 func LiveContextParams() error {
-	contextPath := filepath.Join("infra", "infracdk", "cdk.context.json")
+	contextPath := filepath.Join(cdkMainDirectory, "cdk.context.json")
 
 	data, err := os.ReadFile(contextPath)
 	if err != nil {
@@ -192,7 +196,7 @@ func LiveContextParams() error {
 func Build() error {
 	const buildDirPerm = 0o0700
 
-	if err := os.MkdirAll(filepath.Join("infra", "infracdk", "builds"), buildDirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Join(cdkMainDirectory, "builds"), buildDirPerm); err != nil {
 		return fmt.Errorf("failed to create build dir: %w", err)
 	}
 
@@ -231,7 +235,7 @@ func buildImages() error {
 		}
 
 		if err := sh.Run("docker", "save", tag,
-			"-o", filepath.Join("infra", "infracdk", "builds", build.Name+".tar"),
+			"-o", filepath.Join(cdkMainDirectory, "builds", build.Name+".tar"),
 		); err != nil {
 			return fmt.Errorf("failed to save docker image: %w", err)
 		}
@@ -284,7 +288,7 @@ func List(env string) error {
 }
 
 func cdk(env, qual string, args ...string) error {
-	if err := os.Chdir(filepath.Join("infra", "infracdk")); err != nil {
+	if err := os.Chdir(cdkMainDirectory); err != nil {
 		return fmt.Errorf("failed to chdir: %w", err)
 	}
 
