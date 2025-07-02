@@ -9,6 +9,7 @@ require (
 	buf.build/go/protovalidate v0.12.0
 	connectrpc.com/authn v0.2.0
 	connectrpc.com/connect v1.18.1
+	connectrpc.com/cors v0.1.0
 	entgo.io/ent v0.14.1
 	github.com/advdv/bhttp v0.3.2
 	github.com/aws/aws-cdk-go/awscdk/v2 v2.173.4
@@ -28,6 +29,8 @@ require (
 	github.com/destel/rill v0.6.0
 	github.com/docker/go-connections v0.5.0
 	github.com/failsafe-go/failsafe-go v0.6.9
+	github.com/felixge/httpsnoop v1.0.4
+	github.com/go-chi/chi/v5 v5.0.8
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/google/uuid v1.6.0
@@ -44,6 +47,7 @@ require (
 	github.com/riverqueue/river v0.23.1
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.23.1
 	github.com/riverqueue/river/rivertype v0.23.1
+	github.com/rs/cors v1.11.1
 	github.com/samber/slog-zap/v2 v2.6.2
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.35.0
@@ -92,7 +96,6 @@ require (
 	github.com/docker/docker v27.5.0+incompatible // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
