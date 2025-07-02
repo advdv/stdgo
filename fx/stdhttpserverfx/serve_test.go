@@ -8,6 +8,7 @@ import (
 
 	"github.com/advdv/stdgo/fx/stdhttpserverfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
@@ -21,6 +22,7 @@ func TestServeNoName(t *testing.T) {
 
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
 		fx.Populate(&addr),
+		stdenvcfg.ProvideOSEnvironment(),
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
@@ -40,6 +42,7 @@ func TestServeNamed(t *testing.T) {
 	ctx, app := t.Context(), fx.New(
 		fx.Supply(fx.Annotate(serve, fx.ResultTags(`name:"web"`), fx.As(new(http.Handler)))),
 		fx.Populate(fx.Annotate(&addr, fx.ParamTags(`name:"web"`))),
+		stdenvcfg.ProvideOSEnvironment(),
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
@@ -64,6 +67,7 @@ func TestTwoNamedServes(t *testing.T) {
 	app := fxtest.New(t,
 		fx.Supply(fx.Annotate(serve, fx.ResultTags(`name:"a"`), fx.As(new(http.Handler)))),
 		fx.Supply(fx.Annotate(serve, fx.ResultTags(`name:"b"`), fx.As(new(http.Handler)))),
+		stdenvcfg.ProvideOSEnvironment(),
 
 		stdhttpserverfx.Provide("a"),
 		stdhttpserverfx.Provide("b"),

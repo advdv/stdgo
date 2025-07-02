@@ -22,7 +22,7 @@ func TestConfigProviding(t *testing.T) {
 	t.Setenv("BARS", hex.EncodeToString([]byte("1"))+","+hex.EncodeToString([]byte("2")))
 
 	var cfg1 Conf1
-	fxtest.New(t, fx.Populate(&cfg1), stdenvcfg.Provide[Conf1]())
+	fxtest.New(t, fx.Populate(&cfg1), stdenvcfg.Provide[Conf1](), stdenvcfg.ProvideOSEnvironment())
 	assert.Equal(t, "bar", cfg1.Foo)
 
 	assert.Equal(t, "dar", string(cfg1.Bar))
@@ -35,7 +35,7 @@ func TestConfigProvidingPrefix(t *testing.T) {
 	t.Setenv("FIX_FOO", "bar")
 
 	var cfg1 Conf1
-	fxtest.New(t, fx.Populate(&cfg1), stdenvcfg.Provide[Conf1]("FIX_"))
+	fxtest.New(t, fx.Populate(&cfg1), stdenvcfg.Provide[Conf1]("FIX_"), stdenvcfg.ProvideOSEnvironment())
 	assert.Equal(t, "bar", cfg1.Foo)
 }
 
@@ -53,6 +53,7 @@ func TestConfigProvideNamed(t *testing.T) {
 		fx.Populate(&deps),
 		stdenvcfg.ProvideNamed[Conf1]("ab", "FIX_"),
 		stdenvcfg.ProvideNamed[Conf1]("bb", "FIX_"),
+		stdenvcfg.ProvideOSEnvironment(),
 	)
 
 	assert.Equal(t, "bar", deps.CfgA.Foo)

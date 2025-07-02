@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -22,6 +23,7 @@ func TestNonTestingLogger(t *testing.T) {
 	app := fxtest.New(t,
 		stdzapfx.Fx(),
 		stdzapfx.Provide(),
+		stdenvcfg.ProvideOSEnvironment(),
 		fx.Populate(&logs),
 		fx.Decorate(func(c stdzapfx.Config) stdzapfx.Config {
 			c.Outputs = []string{tmpfp}

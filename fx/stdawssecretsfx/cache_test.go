@@ -5,6 +5,7 @@ import (
 
 	"github.com/advdv/stdgo/fx/stdawsfx"
 	"github.com/advdv/stdgo/fx/stdawssecretsfx"
+	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/aws/aws-secretsmanager-caching-go/v2/secretcache"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -13,7 +14,11 @@ import (
 
 func TestCache(t *testing.T) {
 	var cache *secretcache.Cache
-	app := fxtest.New(t, stdawssecretsfx.Provide(), stdawsfx.Provide(), fx.Populate(&cache))
+	app := fxtest.New(t,
+		stdawssecretsfx.Provide(),
+		stdawsfx.Provide(),
+		fx.Populate(&cache),
+		stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)
 

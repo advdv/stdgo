@@ -3,6 +3,7 @@ package stdfx_test
 import (
 	"testing"
 
+	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/advdv/stdgo/stdfx"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
@@ -37,7 +38,7 @@ var Module2 = stdfx.NamedNoProvideZapEnvCfgModule[Config]("foo", "a", fx.Provide
 
 func TestZapCfgModule(t *testing.T) {
 	var bar Bar
-	app := fxtest.New(t, Module1, fx.Provide(zap.NewExample), fx.Populate(&bar))
+	app := fxtest.New(t, Module1, fx.Provide(zap.NewExample), fx.Populate(&bar), stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	app.RequireStop()
 }
@@ -47,7 +48,7 @@ func TestNamedZapCfgModule(t *testing.T) {
 		fx.In
 		Cfg Config `name:"a"`
 	}
-	app := fxtest.New(t, Module2, fx.Provide(zap.NewExample), fx.Populate(&deps))
+	app := fxtest.New(t, Module2, fx.Provide(zap.NewExample), fx.Populate(&deps), stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	app.RequireStop()
 }

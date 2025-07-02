@@ -76,7 +76,7 @@ func TestIamAuth(t *testing.T) {
 		stdawsfx.Provide(),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
-		stdenvcfg.ProvideEnvironment(map[string]string{
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
 			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
 			"STDPGX_IAM_AUTH_REGION":   "eu-central-1",
 			"STDZAP_LEVEL":             "debug",
@@ -258,7 +258,7 @@ func setup(tb testing.TB) (context.Context, fx.Option) {
 	return tb.Context(), fx.Options(
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdenvcfg.ProvideEnvironment(map[string]string{
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
 			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
 		}),
 	)
