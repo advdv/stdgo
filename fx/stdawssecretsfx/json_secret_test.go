@@ -20,7 +20,7 @@ type secret1 struct {
 type config1 struct{}
 
 func (config1) AWSSecretID() string {
-	return "foo:bar"
+	return "some:json:secret"
 }
 
 type client1 struct {
@@ -38,9 +38,18 @@ func (client1) DescribeSecret(ctx context.Context, params *secretsmanager.Descri
 }
 
 func (client1) GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-	return &secretsmanager.GetSecretValueOutput{
-		SecretString: aws.String(`{"my_secret":"sosecret"}`),
-	}, nil
+	switch *params.SecretId {
+	case "some:string:secret":
+		return &secretsmanager.GetSecretValueOutput{
+			SecretString: aws.String(`sosecret`),
+		}, nil
+	case "some:json:secret":
+		return &secretsmanager.GetSecretValueOutput{
+			SecretString: aws.String(`{"my_secret":"sosecret"}`),
+		}, nil
+	default:
+		panic("unsupported, got: " + *params.SecretId)
+	}
 }
 
 func TestJSONSecret(t *testing.T) {
