@@ -1,0 +1,12 @@
+edition = "2023";
+
+package stdcrpc.stdcrpcintercept.internal.v1;
+
+import "buf/validate/validate.proto";
+
+message Greeting {
+  string name = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 3
+  ];
+}

@@ -1,0 +1,19 @@
+version: v2
+modules:
+  - path: .
+    name: buf.build/crewlinker/sdback
+deps:
+  - buf.build/bufbuild/protovalidate
+lint:
+  use:
+    - PACKAGE_NO_IMPORT_CYCLE
+    - STANDARD
+  disallow_comment_ignores: true
+  rpc_allow_google_protobuf_empty_responses: true
+
+breaking:
+  use:
+    - FILE
+  except:
+    - EXTENSION_NO_DELETE
+    - FIELD_SAME_DEFAULT

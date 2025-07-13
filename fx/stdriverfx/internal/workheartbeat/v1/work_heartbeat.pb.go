@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        (unknown)
-// source: internal/work/workheartbeat/v1/work_heartbeat.proto
+// source: fx/stdriverfx/internal/workheartbeat/v1/work_heartbeat.proto
 
 package workheartbeatv1
 
@@ -32,7 +32,7 @@ type Args struct {
 
 func (x *Args) Reset() {
 	*x = Args{}
-	mi := &file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes[0]
+	mi := &file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +44,7 @@ func (x *Args) String() string {
 func (*Args) ProtoMessage() {}
 
 func (x *Args) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes[0]
+	mi := &file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -101,7 +101,7 @@ type Output struct {
 
 func (x *Output) Reset() {
 	*x = Output{}
-	mi := &file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes[1]
+	mi := &file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -113,7 +113,7 @@ func (x *Output) String() string {
 func (*Output) ProtoMessage() {}
 
 func (x *Output) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes[1]
+	mi := &file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,27 +160,27 @@ func (b0 Output_builder) Build() *Output {
 	return m0
 }
 
-var File_internal_work_workheartbeat_v1_work_heartbeat_proto protoreflect.FileDescriptor
+var File_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto protoreflect.FileDescriptor
 
-const file_internal_work_workheartbeat_v1_work_heartbeat_proto_rawDesc = "" +
+const file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_rawDesc = "" +
 	"\n" +
-	"3internal/work/workheartbeat/v1/work_heartbeat.proto\x12\x1einternal.work.workheartbeat.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"F\n" +
+	"<fx/stdriverfx/internal/workheartbeat/v1/work_heartbeat.proto\x12'fx.stdriverfx.internal.workheartbeat.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\"F\n" +
 	"\x04Args\x12>\n" +
 	"\tblock_for\x18\x01 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\bblockFor\"J\n" +
 	"\x06Output\x12@\n" +
 	"\n" +
-	"block_took\x18\x01 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\tblockTookB\xa0\x02\n" +
-	"\"com.internal.work.workheartbeat.v1B\x12WorkHeartbeatProtoP\x01ZKgithub.com/crewlinker/sdback/internal/work/workheartbeat/v1;workheartbeatv1\xa2\x02\x03IWW\xaa\x02\x1eInternal.Work.Workheartbeat.V1\xca\x02\x1eInternal\\Work\\Workheartbeat\\V1\xe2\x02*Internal\\Work\\Workheartbeat\\V1\\GPBMetadata\xea\x02!Internal::Work::Workheartbeat::V1b\beditionsp\xe8\a"
+	"block_took\x18\x01 \x01(\v2\x19.google.protobuf.DurationB\x06\xbaH\x03\xc8\x01\x01R\tblockTookB\xd2\x02\n" +
+	"+com.fx.stdriverfx.internal.workheartbeat.v1B\x12WorkHeartbeatProtoP\x01ZNgithub.com/advdv/stdgo/fx/stdriverfx/internal/workheartbeat/v1;workheartbeatv1\xa2\x02\x04FSIW\xaa\x02'Fx.Stdriverfx.Internal.Workheartbeat.V1\xca\x02'Fx\\Stdriverfx\\Internal\\Workheartbeat\\V1\xe2\x023Fx\\Stdriverfx\\Internal\\Workheartbeat\\V1\\GPBMetadata\xea\x02+Fx::Stdriverfx::Internal::Workheartbeat::V1b\beditionsp\xe8\a"
 
-var file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_internal_work_workheartbeat_v1_work_heartbeat_proto_goTypes = []any{
-	(*Args)(nil),                // 0: internal.work.workheartbeat.v1.Args
-	(*Output)(nil),              // 1: internal.work.workheartbeat.v1.Output
+var file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_goTypes = []any{
+	(*Args)(nil),                // 0: fx.stdriverfx.internal.workheartbeat.v1.Args
+	(*Output)(nil),              // 1: fx.stdriverfx.internal.workheartbeat.v1.Output
 	(*durationpb.Duration)(nil), // 2: google.protobuf.Duration
 }
-var file_internal_work_workheartbeat_v1_work_heartbeat_proto_depIdxs = []int32{
-	2, // 0: internal.work.workheartbeat.v1.Args.block_for:type_name -> google.protobuf.Duration
-	2, // 1: internal.work.workheartbeat.v1.Output.block_took:type_name -> google.protobuf.Duration
+var file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_depIdxs = []int32{
+	2, // 0: fx.stdriverfx.internal.workheartbeat.v1.Args.block_for:type_name -> google.protobuf.Duration
+	2, // 1: fx.stdriverfx.internal.workheartbeat.v1.Output.block_took:type_name -> google.protobuf.Duration
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -188,26 +188,26 @@ var file_internal_work_workheartbeat_v1_work_heartbeat_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_internal_work_workheartbeat_v1_work_heartbeat_proto_init() }
-func file_internal_work_workheartbeat_v1_work_heartbeat_proto_init() {
-	if File_internal_work_workheartbeat_v1_work_heartbeat_proto != nil {
+func init() { file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_init() }
+func file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_init() {
+	if File_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_work_workheartbeat_v1_work_heartbeat_proto_rawDesc), len(file_internal_work_workheartbeat_v1_work_heartbeat_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_rawDesc), len(file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_internal_work_workheartbeat_v1_work_heartbeat_proto_goTypes,
-		DependencyIndexes: file_internal_work_workheartbeat_v1_work_heartbeat_proto_depIdxs,
-		MessageInfos:      file_internal_work_workheartbeat_v1_work_heartbeat_proto_msgTypes,
+		GoTypes:           file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_goTypes,
+		DependencyIndexes: file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_depIdxs,
+		MessageInfos:      file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_msgTypes,
 	}.Build()
-	File_internal_work_workheartbeat_v1_work_heartbeat_proto = out.File
-	file_internal_work_workheartbeat_v1_work_heartbeat_proto_goTypes = nil
-	file_internal_work_workheartbeat_v1_work_heartbeat_proto_depIdxs = nil
+	File_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto = out.File
+	file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_goTypes = nil
+	file_fx_stdriverfx_internal_workheartbeat_v1_work_heartbeat_proto_depIdxs = nil
 }
