@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// HJTX transacts while encoding and decoding a buffered JSON HTTP request/response.
-func HJTX[I, O any](
+// HJTx transacts while encoding and decoding a buffered JSON HTTP request/response.
+func HJTx[I, O any](
 	ctx context.Context,
 	txr *stdtx.Transactor[pgx.Tx],
 	resp http.ResponseWriter,

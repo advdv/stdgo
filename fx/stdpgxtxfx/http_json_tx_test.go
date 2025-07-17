@@ -26,7 +26,7 @@ func TestHTTPJSONOk(t *testing.T) {
 	ctx, rw, _ := setup(t)
 
 	resp, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"In":"bar"}`))
-	err := stdpgxtxfx.HJTX(ctx, rw, resp, req,
+	err := stdpgxtxfx.HJTx(ctx, rw, resp, req,
 		func(ctx context.Context, l *zap.Logger, tx pgx.Tx, i *FooInput) (*FooOutput, error) {
 			return &FooOutput{Out: i.In}, nil
 		})
@@ -41,7 +41,7 @@ func TestHTTPJSONOtherError(t *testing.T) {
 	ctx, rw, _ := setup(t)
 
 	resp, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"In":"bar"}`))
-	err := stdpgxtxfx.HJTX(ctx, rw, resp, req,
+	err := stdpgxtxfx.HJTx(ctx, rw, resp, req,
 		func(ctx context.Context, l *zap.Logger, tx pgx.Tx, i *FooInput) (*FooOutput, error) {
 			return nil, errors.New("foo")
 		})
@@ -56,7 +56,7 @@ func TestHTTPJSONPgError(t *testing.T) {
 	ctx, rw, _ := setup(t)
 
 	resp, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"In":"bar"}`))
-	err := stdpgxtxfx.HJTX(ctx, rw, resp, req,
+	err := stdpgxtxfx.HJTx(ctx, rw, resp, req,
 		func(ctx context.Context, l *zap.Logger, tx pgx.Tx, i *FooInput) (*FooOutput, error) {
 			return nil, &pgconn.PgError{Code: "42501"}
 		})
