@@ -1,11 +1,13 @@
 package stdpgxtxfx_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdpgxtxfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/advdv/stdgo/stdtx"
 	"github.com/jackc/pgx/v5"
@@ -13,19 +15,22 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/zap"
 )
 
 func TestSetup(t *testing.T) {
 	t.Parallel()
 
-	ro, rw := setup(t)
+	ctx, ro, rw := setup(t)
+	require.NotNil(t, ctx)
 	require.NotNil(t, ro)
 	require.NotNil(t, rw)
 }
 
-func setup(tb testing.TB) (*stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
+func setup(tb testing.TB) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
 	var deps struct {
 		fx.In
+		*zap.Logger
 		RW *stdtx.Transactor[pgx.Tx] `name:"rw"`
 		RO *stdtx.Transactor[pgx.Tx] `name:"ro"`
 	}
@@ -37,7 +42,7 @@ func setup(tb testing.TB) (*stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx])
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
-		stdpgxtxfx.TestProvide("testapp", "some_sysuser", "some_passwrd"),
+		stdpgxtxfx.TestProvide("testapp", "postgres", "postgres"),
 
 		fx.Populate(&deps),
 	)
@@ -45,5 +50,8 @@ func setup(tb testing.TB) (*stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx])
 	app.RequireStart()
 	tb.Cleanup(app.RequireStop)
 
-	return deps.RO, deps.RW
+	ctx := tb.Context()
+	ctx = stdctx.WithLogger(ctx, deps.Logger)
+
+	return ctx, deps.RO, deps.RW
 }
