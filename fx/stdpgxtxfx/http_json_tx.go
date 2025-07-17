@@ -8,11 +8,22 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/advdv/bhttp"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdtx"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
+
+// BHJTx creates an bhttp handler that transacts on json request and response.
+func BHJTx[C bhttp.Context, I, O any](
+	txr *stdtx.Transactor[pgx.Tx],
+	fn func(context.Context, *zap.Logger, pgx.Tx, *I) (*O, error),
+) bhttp.HandlerFunc[C] {
+	return func(ctx C, w bhttp.ResponseWriter, r *http.Request) error {
+		return HJTx(ctx, txr, w, r, fn)
+	}
+}
 
 // HJTx transacts while encoding and decoding a buffered JSON HTTP request/response.
 func HJTx[I, O any](
