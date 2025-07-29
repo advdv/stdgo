@@ -2,6 +2,7 @@ package stdpgxtxfx_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
@@ -10,6 +11,7 @@ import (
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/advdv/stdgo/stdtx"
+	"github.com/advdv/stdgo/stdtx/stdtxpgxv5"
 	"github.com/jackc/pgx/v5"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/stretchr/testify/require"
@@ -27,7 +29,20 @@ func TestSetup(t *testing.T) {
 	require.NotNil(t, rw)
 }
 
-func setup(tb testing.TB) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
+func testHook(logs *zap.Logger) (out struct {
+	fx.Out
+	stdtxpgxv5.TxBeginSQLFunc
+},
+) {
+	out.TxBeginSQLFunc = func(_ context.Context, b *strings.Builder, _ pgx.Tx) (*strings.Builder, error) {
+		logs.Info("hook called")
+		return b, nil
+	}
+
+	return
+}
+
+func setup(tb testing.TB, other ...any) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
 	var deps struct {
 		fx.In
 		*zap.Logger
@@ -43,8 +58,9 @@ func setup(tb testing.TB) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Tr
 		stdzapfx.TestProvide(tb),
 		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
 		stdpgxtxfx.TestProvide("testapp", "postgres", "postgres"),
-
+		fx.Provide(testHook),
 		fx.Populate(&deps),
+		fx.Populate(other...),
 	)
 
 	app.RequireStart()

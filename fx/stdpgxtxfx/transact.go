@@ -2,7 +2,6 @@
 package stdpgxtxfx
 
 import (
-	"context"
 	"strings"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
@@ -25,8 +24,9 @@ type Config struct {
 type Params struct {
 	fx.In
 	Config
-	RW *pgxpool.Pool `name:"rw"`
-	RO *pgxpool.Pool `name:"ro"`
+	RW     *pgxpool.Pool             `name:"rw"`
+	RO     *pgxpool.Pool             `name:"ro"`
+	TxHook stdtxpgxv5.TxBeginSQLFunc `optional:"true"`
 }
 
 // Result describes the fx components this package produces.
@@ -38,8 +38,9 @@ type Result struct {
 
 // New provides the transactors.
 func New(params Params) (Result, error) {
-	opts := []stdtxpgxv5.Option{
-		stdtxpgxv5.BeginWithSQL(beginTxSQLHook(params.Config)),
+	opts := []stdtxpgxv5.Option{}
+	if params.TxHook != nil {
+		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxHook))
 	}
 
 	if params.Config.TestMaxQueryCosts > 0 {
@@ -55,15 +56,6 @@ func New(params Params) (Result, error) {
 			stdtxpgxv5.AccessMode(pgx.ReadOnly),
 		}...)...)),
 	}, nil
-}
-
-// beginTxSQLHook returns a function that is run at the start of every transaction. It allows for
-// setting up cross-cutting concerns for all sql transactions. Such as parameters required for
-// row-level security policies.
-func beginTxSQLHook(Config) stdtxpgxv5.TxBeginSQLFunc {
-	return func(_ context.Context, sql *strings.Builder, _ pgx.Tx) (*strings.Builder, error) {
-		return sql, nil
-	}
 }
 
 // Provide provides the standard read-write/read-only separation.
