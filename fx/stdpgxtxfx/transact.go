@@ -60,7 +60,7 @@ func New(params Params) (Result, error) {
 
 // Provide provides the standard read-write/read-only separation.
 func Provide(applicationName string) fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("transact", New,
+	return stdfx.ZapEnvCfgModule[Config]("stdpgxtxfx", New,
 
 		// configure an application name for the connection.
 		stdpgxfx.ProvideDeriver("rw", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
@@ -91,10 +91,6 @@ func Provide(applicationName string) fx.Option {
 func TestProvide(applicationName, endRoleUsername, endRolePassword string) fx.Option {
 	return fx.Options(
 		Provide(applicationName),
-		fx.Decorate(func(c Config) Config {
-			c.TestMaxQueryCosts = 100 // number obtained heuristically
-			return c
-		}),
 		fx.Supply(
 			&pgtestdb.Role{
 				// role for migrations
