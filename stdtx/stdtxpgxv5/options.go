@@ -11,8 +11,8 @@ import (
 // TxBeginSQLFunc is the signature for determining custom sql run at the start of the transaction.
 type TxBeginSQLFunc = func(context.Context, *strings.Builder, pgx.Tx) (*strings.Builder, error)
 
-// TxHook is the signature of a function called in the transaction lifecycle, a hook.
-type TxHook = func(context.Context, pgx.TxAccessMode, pgx.Tx) error
+// TxOnCommitFunc is the signature of a function called on commit.
+type TxOnCommitFunc = func(context.Context, pgx.TxAccessMode, pgx.Tx) error
 
 type options struct {
 	txIsoLevel          pgx.TxIsoLevel
@@ -21,7 +21,7 @@ type options struct {
 	discourageSeqScans  bool
 	maxQueryPlanCosts   float64
 	txExecQueryLogLevel zapcore.Level
-	onTxCommit          TxHook
+	onTxCommit          TxOnCommitFunc
 }
 
 // Option configures the pgxv5 driver.
@@ -49,7 +49,7 @@ func BeginWithSQL(v TxBeginSQLFunc) Option {
 }
 
 // OnTxCommit configures a hook called right before the transaction is committed.
-func OnTxCommit(v TxHook) Option {
+func OnTxCommit(v TxOnCommitFunc) Option {
 	return func(o *options) {
 		o.onTxCommit = v
 	}

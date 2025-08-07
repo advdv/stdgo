@@ -24,9 +24,10 @@ type Config struct {
 type Params struct {
 	fx.In
 	Config
-	RW     *pgxpool.Pool             `name:"rw"`
-	RO     *pgxpool.Pool             `name:"ro"`
-	TxHook stdtxpgxv5.TxBeginSQLFunc `optional:"true"`
+	RW             *pgxpool.Pool             `name:"rw"`
+	RO             *pgxpool.Pool             `name:"ro"`
+	TxBeginSQL     stdtxpgxv5.TxBeginSQLFunc `optional:"true"`
+	OnCommitTxHook stdtxpgxv5.TxOnCommitFunc `optional:"true"`
 }
 
 // Result describes the fx components this package produces.
@@ -39,8 +40,12 @@ type Result struct {
 // New provides the transactors.
 func New(params Params) (Result, error) {
 	opts := []stdtxpgxv5.Option{}
-	if params.TxHook != nil {
-		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxHook))
+	if params.TxBeginSQL != nil {
+		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxBeginSQL))
+	}
+
+	if params.OnCommitTxHook != nil {
+		opts = append(opts, stdtxpgxv5.OnTxCommit(params.OnCommitTxHook))
 	}
 
 	if params.Config.TestMaxQueryCosts > 0 {
