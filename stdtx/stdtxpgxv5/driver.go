@@ -27,7 +27,7 @@ func New(db *pgxpool.Pool, opts ...Option) stdtx.Driver[pgx.Tx] {
 	BeginWithSQL(func(_ context.Context, sql *strings.Builder, _ pgx.Tx) (*strings.Builder, error) {
 		return sql, nil
 	})(&drv.opts)
-	OnTxCommit(func(context.Context, pgx.TxAccessMode, pgx.Tx) error { return nil })
+	OnTxCommit(func(context.Context, pgx.TxAccessMode, pgx.Tx) error { return nil })(&drv.opts)
 
 	for _, opt := range opts {
 		opt(&drv.opts)

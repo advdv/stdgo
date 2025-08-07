@@ -39,7 +39,9 @@ type Result struct {
 
 // New provides the transactors.
 func New(params Params) (Result, error) {
-	opts := []stdtxpgxv5.Option{}
+	// We always run in serializable mode, any other mode can cause write-skew. Which makes it hard to guarantee
+	// min/max counts and check across rows.
+	opts := []stdtxpgxv5.Option{stdtxpgxv5.IsolationMode(pgx.Serializable)}
 	if params.TxBeginSQL != nil {
 		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxBeginSQL))
 	}
