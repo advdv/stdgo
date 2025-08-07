@@ -27,6 +27,7 @@ func New(db *pgxpool.Pool, opts ...Option) stdtx.Driver[pgx.Tx] {
 	BeginWithSQL(func(_ context.Context, sql *strings.Builder, _ pgx.Tx) (*strings.Builder, error) {
 		return sql, nil
 	})(&drv.opts)
+	OnTxCommit(func(context.Context, pgx.TxAccessMode, pgx.Tx) error { return nil })
 
 	for _, opt := range opts {
 		opt(&drv.opts)
@@ -92,6 +93,10 @@ func (d driver) RollbackTx(ctx context.Context, tx pgx.Tx) error {
 
 // CommitTx implements the committing of a transaction.
 func (d driver) CommitTx(ctx context.Context, tx pgx.Tx) error {
+	if err := d.opts.onTxCommit(ctx, d.opts.txAccessMode, tx); err != nil {
+		return fmt.Errorf("on tx commit hook: %w", err)
+	}
+
 	return tx.Commit(ctx)
 }
 

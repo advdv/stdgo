@@ -2,8 +2,10 @@ package stdtxpgxv5_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/advdv/stdgo/stdctx"
@@ -50,6 +52,40 @@ func TestSetupTx(t *testing.T) {
 
 	require.Len(t, obs.FilterMessage("exec").All(), 1)
 	require.Len(t, obs.FilterMessage("query row").All(), 2)
+}
+
+func TestOnTxCommit(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
+		var called int64
+		var accessMode pgx.TxAccessMode
+		ctx, drv, _ := setup(t,
+			stdtxpgxv5.AccessMode(pgx.ReadOnly),
+			stdtxpgxv5.DiscourageSeqScan(true),
+			stdtxpgxv5.OnTxCommit(func(ctx context.Context, am pgx.TxAccessMode, tx pgx.Tx) error {
+				atomic.AddInt64(&called, 1)
+				accessMode = am
+				return nil
+			}))
+
+		tx, err := drv.BeginTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, drv.CommitTx(ctx, tx))
+		require.Equal(t, int64(1), called)
+		require.Equal(t, pgx.ReadOnly, accessMode)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		ctx, drv, _ := setup(t,
+			stdtxpgxv5.DiscourageSeqScan(true),
+			stdtxpgxv5.OnTxCommit(func(ctx context.Context, am pgx.TxAccessMode, tx pgx.Tx) error {
+				return errors.New("foo")
+			}))
+
+		tx, err := drv.BeginTx(ctx)
+		defer tx.Rollback(ctx)
+		require.NoError(t, err)
+		require.ErrorContains(t, drv.CommitTx(ctx, tx), "foo")
+	})
 }
 
 func setup(tb testing.TB, opts ...stdtxpgxv5.Option) (
