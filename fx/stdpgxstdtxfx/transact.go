@@ -85,8 +85,10 @@ func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error
 }
 
 // Provide provides the standard read-write/read-only separation.
-func Provide[T stdent.Tx, C stdent.Client[T]](applicationName string) fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdpgxstdtxfx", New[T, C],
+func Provide[T stdent.Tx, C stdent.Client[T]](applicationName string, clientFactory ClientFactoryFunc[T, C]) fx.Option {
+	return stdfx.ZapEnvCfgModule[Config]("stdpgxstdtxfx",
+		New[T, C],
+		fx.Supply(clientFactory),
 
 		// configure an application name for the connection.
 		stdpgxfx.ProvideDeriver("rw", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
@@ -121,8 +123,7 @@ func TestProvide[T stdent.Tx, C stdent.Client[T]](
 	clientFactory ClientFactoryFunc[T, C],
 ) fx.Option {
 	return fx.Options(
-		Provide[T, C](applicationName),
-		fx.Supply(clientFactory),
+		Provide(applicationName, clientFactory),
 		fx.Supply(
 			&pgtestdb.Role{
 				// role for migrations
