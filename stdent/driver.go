@@ -13,6 +13,8 @@ import (
 
 type DriverOption func(*Driver)
 
+type BeginHookFunc = func(ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier) (*strings.Builder, error)
+
 // TestForMaxQueryPlanCosts will enable EXPLAIN on every query that is executed with
 // the driver and fail when the cost of the resulting query is above the maximum. Together
 // with the enable_seqscan=OFF it can help test of infefficient queries do to missing
@@ -43,9 +45,7 @@ func TxExecQueryLoggingLevel(v zapcore.Level) DriverOption {
 // transaction. For example to facilitate role switching and Row-level security. This can either be performed by
 // extending the sql statement that is already being performed (perferred for simple operations). Or using the
 // transaction concretely.
-func BeginHook(v func(
-	ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier) (*strings.Builder, error),
-) DriverOption {
+func BeginHook(v BeginHookFunc) DriverOption {
 	return func(d *Driver) {
 		d.beginHook = v
 	}
@@ -61,7 +61,7 @@ type Driver struct {
 	maxQueryPlanCosts   float64
 	discourageSeqScans  bool
 	txExecQueryLogLevel zapcore.Level
-	beginHook           func(context.Context, *strings.Builder, entdialect.ExecQuerier) (*strings.Builder, error)
+	beginHook           BeginHookFunc
 }
 
 // NewDriver inits the driver.
