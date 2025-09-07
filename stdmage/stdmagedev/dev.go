@@ -73,7 +73,7 @@ func Serve() error {
 		return fmt.Errorf("failed to load development env: %w", err)
 	}
 
-	if err := sh.RunWith(map[string]string{}, "docker", "compose",
+	if err := sh.Run("docker", "compose",
 		"-f", "docker-compose.yml",
 		"up",
 		"-d", "--build", "--remove-orphans", "--force-recreate",
