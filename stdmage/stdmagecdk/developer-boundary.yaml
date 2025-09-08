@@ -51,3 +51,101 @@ Resources:
       Description: "Bootstrap Permission Boundary"
       ManagedPolicyName: developer-policy
       Path: /
+  StandardCdkBaseExecPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "Execution policy required by AWS CDK bootstrap"
+      ManagedPolicyName: StandardCdkBaseExecPolicy
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VisualEditor0
+            Effect: Allow
+            Action:
+              - cloudformation:ListExports
+              - iam:UpdateAssumeRolePolicy
+              - cloudformation:ListResourceScanRelatedResources
+              - tag:UntagResources
+              - iam:ListRoleTags
+              - tag:GetTagValues
+              - iam:ListServerCertificates
+              - cloudformation:ListStackInstances
+              - logs:*
+              - iam:CreateRole
+              - iam:AttachRolePolicy
+              - iam:ListServiceSpecificCredentials
+              - iam:PutRolePolicy
+              - iam:ListSigningCertificates
+              - iam:ListVirtualMFADevices
+              - cloudformation:ListTypeRegistrations
+              - cloudformation:ListStackSetOperationResults
+              - cloudformation:ListStackRefactors
+              - iam:ListSSHPublicKeys
+              - iam:DetachRolePolicy
+              - secretsmanager:*
+              - cloudformation:ListStackSetAutoDeploymentTargets
+              - iam:ListAttachedRolePolicies
+              - iam:ListOpenIDConnectProviderTags
+              - iam:ListSAMLProviderTags
+              - iam:ListRolePolicies
+              - cloudformation:ListStackResources
+              - sns:*
+              - iam:ListPolicies
+              - iam:ListSAMLProviders
+              - iam:ListEntitiesForPolicy
+              - iam:ListOrganizationsFeatures
+              - iam:DeleteRole
+              - cloudformation:ListGeneratedTemplates
+              - cloudformation:DescribeStacks
+              - iam:*
+              - cloudformation:ListStackInstanceResourceDrifts
+              - iam:ListGroupsForUser
+              - iam:ListSTSRegionalEndpointsStatus
+              - cloudformation:ListTypeVersions
+              - iam:GetAccountSummary
+              - cloudformation:ListStackRefactorActions
+              - cloudformation:ListStackSetOperations
+              - cloudformation:ListTypes
+              - iam:PutRolePermissionsBoundary
+              - iam:ListPoliciesGrantingServiceAccess
+              - iam:ListInstanceProfileTags
+              - iam:ListMFADevices
+              - iam:DeleteRolePermissionsBoundary
+              - tag:GetTagKeys
+              - tag:TagResources
+              - cloudformation:ListResourceScanResources
+              - iam:ListInstanceProfilesForRole
+              - cloudformation:ListHookResults
+              - iam:PassRole
+              - iam:DeleteRolePolicy
+              - iam:ListAttachedUserPolicies
+              - iam:ListAttachedGroupPolicies
+              - iam:ListPolicyTags
+              - iam:ListAccessKeys
+              - cloudformation:ListResourceScans
+              - cloudformation:ListStacks
+              - cloudformation:ListImports
+              - s3:*
+              - iam:ListGroupPolicies
+              - iam:ListCloudFrontPublicKeys
+              - iam:ListRoles
+              - iam:ListUserPolicies
+              - iam:ListInstanceProfiles
+              - cloudformation:ListStackSets
+              - iam:ListPolicyVersions
+              - iam:ListOpenIDConnectProviders
+              - ssm:*
+              - iam:ListServerCertificateTags
+              - lambda:*
+              - route53:*
+              - ecr:*
+              - iam:ListAccountAliases
+              - iam:ListUsers
+              - iam:ListGroups
+              - iam:ListMFADeviceTags
+              - cloudformation:ListChangeSets
+              - iam:GetLoginProfile
+              - acm:*
+              - iam:ListUserTags
+            Resource: "*"
