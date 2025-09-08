@@ -89,7 +89,7 @@ func Boundary() error {
 	if err := sh.Run(
 		"aws", "cloudformation", "create-stack",
 		"--no-cli-pager",
-		"--profile", "cl-sterndesk-admin",
+		"--profile", bootstrapProfile,
 		"--region", "eu-central-1",
 		"--stack-name", "DeveloperPolicy",
 		"--template-body", "file://"+tmpf.Name(),
