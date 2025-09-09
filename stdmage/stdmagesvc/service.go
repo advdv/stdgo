@@ -59,25 +59,6 @@ func DockerLogin() error {
 	return nil
 }
 
-func readServiceInfo(deploymentIndent string) (*Service, error) {
-	deployments, err := ReadDeploymentInfo()
-	if err != nil {
-		return nil, fmt.Errorf("read deployment info: %w", err)
-	}
-
-	deployment, ok := deployments[deploymentIndent]
-	if !ok || deployment == nil {
-		return nil, fmt.Errorf("no info about deployment: %s", deploymentIndent)
-	}
-
-	service, ok := deployment.Services[_serviceIdent]
-	if !ok {
-		return nil, fmt.Errorf("no info about service: %s", _serviceIdent)
-	}
-
-	return service, nil
-}
-
 // BuildPush will build new container and push them to the registry.
 func BuildPush(deploymentIdent string) error {
 	// fixes: https://github.com/aws/aws-cdk/issues/33264
@@ -116,8 +97,8 @@ func BuildPush(deploymentIdent string) error {
 	return nil
 }
 
-// Deploy the service by forcing a new deployment and waiting for it to be stable.
-func Deploy(deploymentIdent string) error {
+// UpdateService the service by forcing a new deployment and waiting for it to be stable.
+func UpdateService(deploymentIdent string) error {
 	service, err := readServiceInfo(deploymentIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
@@ -140,6 +121,19 @@ func Deploy(deploymentIdent string) error {
 		"--service", service.ServiceName,
 		"--no-cli-pager"); err != nil {
 		return fmt.Errorf("wait for service to be stable: %w", err)
+	}
+
+	return nil
+}
+
+// Deploy build and pushes a new docker image, then updates the service.
+func Deploy(deploymentIdent string) error {
+	if err := BuildPush(deploymentIdent); err != nil {
+		return fmt.Errorf("build push: %w", err)
+	}
+
+	if err := UpdateService(deploymentIdent); err != nil {
+		return fmt.Errorf("update service: %w", err)
 	}
 
 	return nil
@@ -235,4 +229,23 @@ func PrintDeploymentInfo() error {
 
 	fmt.Fprintln(os.Stderr, string(data))
 	return nil
+}
+
+func readServiceInfo(deploymentIndent string) (*Service, error) {
+	deployments, err := ReadDeploymentInfo()
+	if err != nil {
+		return nil, fmt.Errorf("read deployment info: %w", err)
+	}
+
+	deployment, ok := deployments[deploymentIndent]
+	if !ok || deployment == nil {
+		return nil, fmt.Errorf("no info about deployment: %s", deploymentIndent)
+	}
+
+	service, ok := deployment.Services[_serviceIdent]
+	if !ok {
+		return nil, fmt.Errorf("no info about service: %s", _serviceIdent)
+	}
+
+	return service, nil
 }
