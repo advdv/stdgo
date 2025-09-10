@@ -16,6 +16,8 @@ import (
 type Config struct {
 	// LoadConfigTimeout bounds the time given to config loading
 	LoadConfigTimeout time.Duration `env:"LOAD_CONFIG_TIMEOUT" envDefault:"100ms"`
+	// OverwriteSharedConfigProfile can be set to overwrite the AWS_PROFILE value, useful during testing.
+	OverwriteSharedConfigProfile string `env:"OVERWRITE_SHARED_CONFIG_PROFILE"`
 }
 
 // New inits the main component in this module.
@@ -23,7 +25,12 @@ func New(cfg Config) (acfg aws.Config, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.LoadConfigTimeout)
 	defer cancel()
 
-	if acfg, err = config.LoadDefaultConfig(ctx); err != nil {
+	opts := []func(*config.LoadOptions) error{}
+	if cfg.OverwriteSharedConfigProfile != "" {
+		opts = append(opts, config.WithSharedConfigProfile(cfg.OverwriteSharedConfigProfile))
+	}
+
+	if acfg, err = config.LoadDefaultConfig(ctx, opts...); err != nil {
 		return acfg, fmt.Errorf("failed to load default config: %w", err)
 	}
 
