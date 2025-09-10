@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/advdv/stdgo/stdmage/stdmagedev"
+	"github.com/destel/rill"
 	"github.com/iancoleman/strcase"
 	"github.com/magefile/mage/sh"
 )
@@ -21,6 +23,7 @@ var (
 	_composeProjectName string
 	_dockerImagePrefix  string
 	_ecsClusterName     string
+	_deploymentIdents   []string
 )
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
@@ -34,6 +37,7 @@ func Init(
 	composeProbjectName string,
 	dockerImagePrefix string,
 	ecsClusterName string,
+	deploymentIdents []string,
 	_ ...[]string, // just here so Mage doesn't recognize a "init" target.
 ) {
 	_awsProfile = awsProfile
@@ -45,6 +49,7 @@ func Init(
 	_composeProjectName = composeProbjectName
 	_dockerImagePrefix = dockerImagePrefix
 	_ecsClusterName = ecsClusterName
+	_deploymentIdents = deploymentIdents
 }
 
 // DockerLogin logs docker into ther registry.
@@ -59,8 +64,8 @@ func DockerLogin() error {
 	return nil
 }
 
-// BuildPush will build new container and push them to the registry.
-func BuildPush(deploymentIdent string) error {
+// Build will build the service container(s).
+func Build() error {
 	// fixes: https://github.com/aws/aws-cdk/issues/33264
 	os.Setenv("BUILDX_NO_DEFAULT_ATTESTATIONS", "1")
 
@@ -69,9 +74,24 @@ func BuildPush(deploymentIdent string) error {
 		return fmt.Errorf("build and serve new containers: %w", err)
 	}
 
+	return nil
+}
+
+// Push push the last build container to the registry.
+func Push(deploymentIdent string) error {
+	return push(deploymentIdent, true)
+}
+
+func push(deploymentIdent string, doLogin bool) error {
+	if err := checkDeploymentIdents(deploymentIdent); err != nil {
+		return err
+	}
+
 	// instruct docker to login with the registry.
-	if err := DockerLogin(); err != nil {
-		return fmt.Errorf("docker login: %w", err)
+	if doLogin {
+		if err := DockerLogin(); err != nil {
+			return fmt.Errorf("docker login: %w", err)
+		}
 	}
 
 	// read the service info.
@@ -99,6 +119,10 @@ func BuildPush(deploymentIdent string) error {
 
 // UpdateService the service by forcing a new deployment and waiting for it to be stable.
 func UpdateService(deploymentIdent string) error {
+	if err := checkDeploymentIdents(deploymentIdent); err != nil {
+		return err
+	}
+
 	service, err := readServiceInfo(deploymentIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
@@ -128,12 +152,41 @@ func UpdateService(deploymentIdent string) error {
 
 // Deploy build and pushes a new docker image, then updates the service.
 func Deploy(deploymentIdent string) error {
-	if err := BuildPush(deploymentIdent); err != nil {
-		return fmt.Errorf("build push: %w", err)
+	return deploy(deploymentIdent, true, true)
+}
+
+func deploy(deploymentIdent string, doBuild, doLogin bool) error {
+	if doBuild {
+		if err := Build(); err != nil {
+			return fmt.Errorf("build: %w", err)
+		}
+	}
+
+	if err := push(deploymentIdent, doLogin); err != nil {
+		return fmt.Errorf("push: %w", err)
 	}
 
 	if err := UpdateService(deploymentIdent); err != nil {
 		return fmt.Errorf("update service: %w", err)
+	}
+
+	return nil
+}
+
+// DeployAll build, pushes and deploys new docker containers for all deployments.
+func DeployAll() error {
+	if err := Build(); err != nil {
+		return fmt.Errorf("build: %w", err)
+	}
+
+	if err := DockerLogin(); err != nil {
+		return fmt.Errorf("docker login: %w", err)
+	}
+
+	if err := rill.ForEach(rill.FromSlice(_deploymentIdents, nil), 5, func(deploymentIdent string) error {
+		return deploy(deploymentIdent, false, false)
+	}); err != nil {
+		return fmt.Errorf("for each deployment: %w", err)
 	}
 
 	return nil
@@ -233,4 +286,11 @@ func readServiceInfo(deploymentIndent string) (*Service, error) {
 	}
 
 	return service, nil
+}
+
+func checkDeploymentIdents(ident string) error {
+	if !slices.Contains(_deploymentIdents, ident) {
+		return fmt.Errorf("unsupported ident '%s', allowed: %v", ident, _deploymentIdents)
+	}
+	return nil
 }
