@@ -216,21 +216,6 @@ func ReadDeploymentInfo() (Deployments, error) {
 	return deployments, nil
 }
 
-func PrintDeploymentInfo() error {
-	info, err := ReadDeploymentInfo()
-	if err != nil {
-		return fmt.Errorf("read deployment info: %w", err)
-	}
-
-	data, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal info: %w", err)
-	}
-
-	fmt.Fprintln(os.Stderr, string(data))
-	return nil
-}
-
 func readServiceInfo(deploymentIndent string) (*Service, error) {
 	deployments, err := ReadDeploymentInfo()
 	if err != nil {
