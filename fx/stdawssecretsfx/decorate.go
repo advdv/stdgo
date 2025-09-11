@@ -30,10 +30,9 @@ func DecorateEnvironment() fx.Option {
 				continue
 			}
 
-			fmt.Println("KV", key, val)
 			secretID := strings.TrimPrefix(val, resolvePrefix)
-
 			secretID, jpath, hasJPath := strings.Cut(secretID, jsonPathSeparator)
+
 			resolved, err := cache.GetSecretStringWithContext(ctx, secretID)
 			if err != nil {
 				return env, fmt.Errorf("failed to resolve secret %s: %w", secretID, err)
