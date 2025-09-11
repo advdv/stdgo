@@ -22,7 +22,8 @@ func TestDecorate(t *testing.T) {
 
 	app := fxtest.New(t,
 		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"FOO_BAR": "$$aws-secret-manager-resolve$$some:string:secret",
+			"FOO_BAR":       "$$aws-secret-manager-resolve$$some:string:secret",
+			"FOO_BAR_JPATH": "$$aws-secret-manager-resolve$$some:json:secret$$jsonpath$$my_secret",
 		}),
 		stdawssecretsfx.DecorateEnvironment(),
 		fx.Populate(&deps),
@@ -31,4 +32,5 @@ func TestDecorate(t *testing.T) {
 	t.Cleanup(app.RequireStop)
 
 	require.Equal(t, "sosecret", deps.Env["FOO_BAR"])
+	require.Equal(t, "sosecret", deps.Env["FOO_BAR_JPATH"])
 }

@@ -8,10 +8,14 @@ import (
 
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/aws/aws-secretsmanager-caching-go/v2/secretcache"
+	"github.com/tidwall/gjson"
 	"go.uber.org/fx"
 )
 
-const resolvePrefix = "$$aws-secret-manager-resolve$$"
+const (
+	resolvePrefix     = "$$aws-secret-manager-resolve$$"
+	jsonPathSeparator = "$$jsonpath$$"
+)
 
 // DecorateEnvironment turns environment references to secret values into their actual secret value. This happens before
 // the environment is provided to the rest of the application. In order to trigger this behaviour the environment
@@ -26,14 +30,22 @@ func DecorateEnvironment() fx.Option {
 				continue
 			}
 
+			fmt.Println("KV", key, val)
 			secretID := strings.TrimPrefix(val, resolvePrefix)
 
+			secretID, jpath, hasJPath := strings.Cut(secretID, jsonPathSeparator)
 			resolved, err := cache.GetSecretStringWithContext(ctx, secretID)
 			if err != nil {
 				return env, fmt.Errorf("failed to resolve secret %s: %w", secretID, err)
 			}
 
-			env[key] = resolved
+			// if the string encodes a JSON path, resolve it instead of using the whole secret string. The secret string
+			// is now expected to be well-formatted JSON.
+			if hasJPath {
+				env[key] = gjson.Get(resolved, jpath).Str
+			} else {
+				env[key] = resolved
+			}
 		}
 
 		return env, nil
