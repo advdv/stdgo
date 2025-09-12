@@ -1,0 +1,18 @@
+edition = "2023";
+
+package fx.stdtemporalfx.internal.v1;
+
+import "buf/validate/validate.proto";
+import "temporal/v1/temporal.proto";
+
+message FooInput {
+  string bar = 1 [(buf.validate.field).required = true];
+}
+message FooOutput {}
+
+service TestService {
+  option (temporal.v1.service) = {task_queue: "test-v1"};
+  rpc Foo(FooInput) returns (FooOutput) {
+    option (temporal.v1.workflow) = {};
+  }
+}

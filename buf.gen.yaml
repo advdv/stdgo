@@ -4,6 +4,7 @@ managed:
   disable:
     - file_option: go_package
       module: buf.build/bufbuild/protovalidate
+    - module: buf.build/cludden/protoc-gen-go-temporal
   override:
     - file_option: go_package_prefix
       value: github.com/advdv/stdgo
@@ -16,3 +17,13 @@ plugins:
     opt:
       - paths=source_relative
       - default_api_level=API_OPAQUE
+  - local:
+      - go
+      - tool
+      - github.com/cludden/protoc-gen-go-temporal/cmd/protoc-gen-go_temporal
+    out: .
+    strategy: all
+    types:
+      - fx.stdtemporalfx.internal.v1.TestService
+    opt:
+      - paths=source_relative

@@ -2,5 +2,14 @@
 version: v2
 deps:
   - name: buf.build/bufbuild/protovalidate
-    commit: c923a0c2a1324d8b9db81effea973b9c
-    digest: b5:ba54835683c74e87e751bdc482b7d1c157926024587f453ca3640d3348b846aba3244da145042226842e10876a856e19b6dffc96609167199a450455aef9acf3
+    commit: 6c6e0d3c608e4549802254a2eee81bc8
+    digest: b5:a7ca081f38656fc0f5aaa685cc111d3342876723851b47ca6b80cbb810cbb2380f8c444115c495ada58fa1f85eff44e68dc54a445761c195acdb5e8d9af675b6
+  - name: buf.build/cludden/protoc-gen-go-temporal
+    commit: 4db05f219cb34bd4867b3c36ae30e1fd
+    digest: b5:00836c0dbe1f2ff58175ed0e1b90f0f4be6b1a61bf454d92b7d679c9f6250fdf501bcc27ea5e0003d12b666ae08d9f6b10142b0b49af90e1c064a3cbef6e0c3e
+  - name: buf.build/googleapis/googleapis
+    commit: 28151c0d0a1641bf938a7672c500e01d
+    digest: b5:93b70089baa4fc05a92d3e52db91a4b7812db3b57b9664f6cb301733938cb630e377a938e8a56779388171c749c1d42a2e9a6c6230f2ff45f127a8102a6a27d0
+  - name: buf.build/temporalio/api
+    commit: c82c83a50df44bac8f58dad4e7255fde
+    digest: b5:ba350ff7f61270041a1f52d0da35ed1cd5df2bcdd41d1b4e7397a7779e922ccf1f6b6560db5c4f3a94fab8edb08878eb4c51a11c78ecc76cf0c15d9cfcac4a9e
