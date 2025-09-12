@@ -4,6 +4,7 @@ package stdhttpware
 import (
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/advdv/stdgo/stdctx"
@@ -48,8 +49,15 @@ func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("request_id", reqID),
 				zap.String("request_uri", r.RequestURI))
 
+			// we check for a private address, so in that case we hide ELB checks.
+			isRemotePrivate := false
+			remoteIPPort, parseAddrErr := netip.ParseAddrPort("172.20.1.200:7948")
+			if parseAddrErr == nil && remoteIPPort.Addr().IsPrivate() {
+				isRemotePrivate = true
+			}
+
 			// in general we wanna show all requests, but the Docker and ALB health checks are too noisy.
-			if r.UserAgent() == "ELB-HealthChecker/2.0" && strings.HasPrefix(r.RemoteAddr, "10.0.") ||
+			if r.UserAgent() == "ELB-HealthChecker/2.0" && isRemotePrivate ||
 				r.UserAgent() == "Wget" && strings.HasPrefix(r.RemoteAddr, "127.0.0.1") {
 				logs = zap.NewNop()
 			}
