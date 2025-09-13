@@ -3,26 +3,12 @@ package stdtemporalfx
 import (
 	"context"
 
-	client "go.temporal.io/sdk/client"
-	tworker "go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/client"
 	"go.uber.org/fx"
 )
 
-// Register registers workflow and activity implementations.
-func RegisterMain[T generatedClient, W, A, O any](
-	queueName string,
+func ProvideClient[T generatedClient, O any](
 	newClientFn func(client.Client, ...O) T,
-	regFn func(worker tworker.Worker, wf W, act A),
-	opts ...O,
-) fx.Option {
-	return register("main", queueName, newClientFn, regFn, opts...)
-}
-
-// register registers workflow and activity implementations.
-func register[T generatedClient, W, A, O any](
-	name, queueName string,
-	newClientFn func(client.Client, ...O) T,
-	regFn func(worker tworker.Worker, wf W, act A),
 	opts ...O,
 ) fx.Option {
 	return fx.Options(
@@ -36,24 +22,7 @@ func register[T generatedClient, W, A, O any](
 
 			return client
 		}),
-		// provide the registration, named.
-		fx.Provide(fx.Annotate(func(wf W, act A) *Registration {
-			return &Registration{
-				queueName: queueName,
-				regFn: func(w tworker.Worker) {
-					regFn(w, wf, act)
-				},
-			}
-		}, fx.ResultTags(`name:"`+name+`"`))),
 	)
-}
-
-type RegistrationFunc func(w tworker.Worker)
-
-// Registration describes registering of workflow and activities with a worker.
-type Registration struct {
-	regFn     RegistrationFunc
-	queueName string
 }
 
 // constraint for generated client.

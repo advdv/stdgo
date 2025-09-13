@@ -16,7 +16,7 @@ import (
 
 	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	tclient "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/interceptor"
 	tlog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/workflow"
@@ -40,8 +40,8 @@ type Temporal struct {
 	cfg       Config
 	logs      *zap.Logger
 	namespace string
-	c         tclient.Client
-	nsClient  tclient.NamespaceClient
+	c         client.Client
+	nsClient  client.NamespaceClient
 	cintr     *ClientInterceptor
 }
 
@@ -82,7 +82,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 	// if they run on the same worker queue. The easiest way to isolate each test is to create a dedicated
 	// namespace.
 	if c.cfg.CreateAndUseRandomNamespace {
-		c.nsClient, err = tclient.NewNamespaceClient(tclient.Options{
+		c.nsClient, err = client.NewNamespaceClient(client.Options{
 			HostPort: c.cfg.TemporalHostPort,
 			Logger:   tlog.NewStructuredLogger(slogs),
 		})
@@ -103,7 +103,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 		}
 	}
 
-	opts := tclient.Options{
+	opts := client.Options{
 		HostPort:           c.cfg.TemporalHostPort,
 		Logger:             tlog.NewStructuredLogger(slogs),
 		Namespace:          c.namespace,
@@ -112,13 +112,13 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 	}
 
 	if c.cfg.TemporalAPIKey != "" {
-		opts.Credentials = tclient.NewAPIKeyStaticCredentials(c.cfg.TemporalAPIKey)
-		opts.ConnectionOptions = tclient.ConnectionOptions{
+		opts.Credentials = client.NewAPIKeyStaticCredentials(c.cfg.TemporalAPIKey)
+		opts.ConnectionOptions = client.ConnectionOptions{
 			TLS: &tls.Config{}, //nolint:gosec
 		}
 	}
 
-	c.c, err = tclient.DialContext(ctx, opts)
+	c.c, err = client.DialContext(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("dial temporal: %w", err)
 	}
@@ -164,6 +164,7 @@ func (c *Temporal) Stop(ctx context.Context) (err error) {
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdtemporal",
 		New,
-		fx.Provide(NewWorkers, NewWorkerInterceptor, NewClientInterceptor),
+		fx.Provide(NewWorkerInterceptor, NewClientInterceptor),
+		fx.Provide(NewWorkers),
 	)
 }

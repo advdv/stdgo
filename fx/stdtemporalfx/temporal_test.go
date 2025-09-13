@@ -63,13 +63,15 @@ func setup(tb testing.TB, other ...any) (
 		}),
 		stdtemporalfx.Provide(),
 		stdawsfx.Provide(),
-		stdtemporalfx.RegisterMain(
+
+		stdtemporalfx.ProvideClient(internalv1.NewTestServiceClient),
+		stdtemporalfx.ProvideRegistration(
 			internalv1.TestServiceTaskQueue,
-			internalv1.NewTestServiceClient,
 			func(w tworker.Worker, wf *testWorkflows, ac *testActivities) {
 				internalv1.RegisterTestServiceWorkflows(w, wf)
 				internalv1.RegisterTestServiceActivities(w, ac)
-			}),
+			},
+		),
 
 		stdzapfx.TestProvide(tb),
 

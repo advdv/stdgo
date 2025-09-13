@@ -5,67 +5,92 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/interceptor"
-	tworker "go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/worker"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
-type Workers struct {
-	logs   *zap.Logger
-	client *Temporal
-	main   tworker.Worker
-	wicpt  *WorkerInterceptor
-
-	registration struct {
-		main *Registration
-	}
+func ProvideRegistration[W, A any](
+	queueName string,
+	regFn func(worker worker.Worker, wf W, act A),
+) fx.Option {
+	return fx.Options(
+		// provide a registration to be put into the registrations group.
+		fx.Provide(fx.Annotate(func(wf W, act A) *Registration {
+			return &Registration{
+				queueName: queueName,
+				regFn: func(w worker.Worker) {
+					regFn(w, wf, act)
+				},
+			}
+		}, fx.ResultTags(`group:"registrations"`))),
+	)
 }
 
+// Registration describes registering of workflow and activities with a worker.
+type Registration struct {
+	regFn     func(w worker.Worker)
+	queueName string
+}
+
+// Workers represent the set of Temporal workers.
+type Workers struct {
+	logs          *zap.Logger
+	temporal      *Temporal
+	registrations []*Registration
+	workers       []worker.Worker
+	interceptor   *WorkerInterceptor
+}
+
+// NewWorkers inits a new set of workers.
 func NewWorkers(par struct {
 	fx.In
 	fx.Lifecycle
-
-	Client                 *Temporal
-	Logger                 *zap.Logger
-	WorkerInterceptor      *WorkerInterceptor
-	MainWorkerRegistration *Registration `name:"main"`
+	Logger            *zap.Logger
+	Temporal          *Temporal
+	WorkerInterceptor *WorkerInterceptor
+	Registrations     []*Registration `group:"registrations"`
 },
 ) (*Workers, error) {
-	wrks := &Workers{
-		client: par.Client,
-		logs:   par.Logger,
-		wicpt:  par.WorkerInterceptor,
+	w := &Workers{
+		logs:          par.Logger,
+		temporal:      par.Temporal,
+		registrations: par.Registrations,
+		interceptor:   par.WorkerInterceptor,
 	}
 
-	wrks.registration.main = par.MainWorkerRegistration
-
-	par.Append(fx.Hook{OnStart: wrks.Start, OnStop: wrks.Stop})
-	return wrks, nil
+	par.Append(fx.Hook{OnStart: w.Start, OnStop: w.Stop})
+	return w, nil
 }
 
-func (w *Workers) Start(_ context.Context) (err error) {
-	{
-		// main queue and workers.
-		w.main = tworker.New(w.client.c, w.registration.main.queueName, tworker.Options{
+// Start the registered workers.
+func (w *Workers) Start(context.Context) error {
+	for _, registration := range w.registrations {
+		logs := w.logs.Named(registration.queueName)
+		worker := worker.New(w.temporal.c, registration.queueName, worker.Options{
 			OnFatalError: func(err error) {
-				w.logs.Error("fatal worker error", zap.Error(err))
+				logs.Error("fatal worker error", zap.Error(err))
 			},
 			Interceptors: []interceptor.WorkerInterceptor{
-				w.wicpt,
+				w.interceptor,
 			},
 		})
 
-		w.registration.main.regFn(w.main)
+		registration.regFn(worker)
 
-		if err := w.main.Start(); err != nil {
-			return fmt.Errorf("start main worker: %w", err)
+		if err := worker.Start(); err != nil {
+			return fmt.Errorf("start worker: %w", err)
 		}
-	}
 
+		w.workers = append(w.workers, worker)
+	}
 	return nil
 }
 
-func (w *Workers) Stop(context.Context) (err error) {
-	w.main.Stop()
+// Stop the workers.
+func (w *Workers) Stop(context.Context) error {
+	for _, worker := range w.workers {
+		worker.Stop()
+	}
 	return nil
 }
