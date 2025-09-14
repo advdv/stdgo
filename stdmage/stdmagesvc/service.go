@@ -117,6 +117,40 @@ func push(deploymentIdent string, doLogin bool) error {
 	return nil
 }
 
+// UpdateLambdas will update any lambdas associated with the service.
+func UpdateLambdas(deploymentIdent string) error {
+	if err := checkDeploymentIdents(deploymentIdent); err != nil {
+		return err
+	}
+
+	service, err := readServiceInfo(deploymentIdent)
+	if err != nil {
+		return fmt.Errorf("read service info: %w", err)
+	}
+
+	// NOTE: if the need is there, the code below can be run concurrently for each Lambda.
+	for _, lambda := range service.Lambdas {
+		if err := sh.Run("aws", "lambda", "update-function-code",
+			"--region", _awsRegion,
+			"--profile", _awsProfile,
+			"--function-name", lambda.FunctionName,
+			"--image-uri", fmt.Sprintf("%s/%s:%s", _registry, service.RepositoryName, service.MainImageTag),
+			"--no-cli-pager"); err != nil {
+			return fmt.Errorf("failed to update function with new code: %w", err)
+		}
+
+		if err := sh.Run("aws", "lambda", "wait", "function-updated-v2",
+			"--region", _awsRegion,
+			"--profile", _awsProfile,
+			"--function-name", lambda.FunctionName,
+			"--no-cli-pager"); err != nil {
+			return fmt.Errorf("failed to wait for function to be updated: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // UpdateService the service by forcing a new deployment and waiting for it to be stable.
 func UpdateService(deploymentIdent string) error {
 	if err := checkDeploymentIdents(deploymentIdent); err != nil {
@@ -170,6 +204,10 @@ func deploy(deploymentIdent string, doBuild, doLogin bool) error {
 		return fmt.Errorf("update service: %w", err)
 	}
 
+	if err := UpdateLambdas(deploymentIdent); err != nil {
+		return fmt.Errorf("update lambda: %w", err)
+	}
+
 	return nil
 }
 
@@ -197,6 +235,11 @@ type Service struct {
 	RepositoryName string
 	MainImageTag   string
 	ServiceName    string
+	Lambdas        []*Lambda
+}
+
+type Lambda struct {
+	FunctionName string
 }
 
 // Deployment describes deployment information.
@@ -237,7 +280,7 @@ func ReadDeploymentInfo() (Deployments, error) {
 		}
 
 		fields := strings.Split(name, ":")
-		if len(fields) != 3 {
+		if len(fields) < 3 {
 			return nil, fmt.Errorf("invalid export name: %s", name)
 		}
 
@@ -260,6 +303,13 @@ func ReadDeploymentInfo() (Deployments, error) {
 			service.RepositoryName = export.Value
 		case "ServiceName":
 			service.ServiceName = export.Value
+		}
+
+		// lambdas for the service are encoded as 4-part fields.
+		if len(fields) == 4 {
+			service.Lambdas = append(service.Lambdas, &Lambda{
+				FunctionName: export.Value,
+			})
 		}
 
 		deployment.Services[serviceIdent] = service
