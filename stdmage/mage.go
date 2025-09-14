@@ -21,10 +21,6 @@ func MustBeInRootIfNotTest() {
 
 // LoadEnv for loading environment variables for standard dev, stag and prod.
 func LoadEnv(env string) error {
-	if env != "prod" && env != "dev" && env != "stag" {
-		panic("invalid env: " + env)
-	}
-
 	if err := godotenv.Overload(".env", ".env."+env); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load env variables: %w", err)
 	}
