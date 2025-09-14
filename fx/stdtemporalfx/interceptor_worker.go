@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"buf.build/go/protovalidate"
+	"github.com/advdv/stdgo/stdctx"
 	"go.temporal.io/sdk/interceptor"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -16,6 +17,7 @@ import (
 type WorkerInterceptor struct {
 	interceptor.InterceptorBase
 
+	logs      *zap.Logger
 	validator protovalidate.Validator
 }
 
@@ -28,6 +30,7 @@ func NewWorkerInterceptor(
 ) *WorkerInterceptor {
 	return &WorkerInterceptor{
 		validator: val,
+		logs:      logs.Named("worker"),
 	}
 }
 
@@ -44,7 +47,7 @@ func (w *WorkerInterceptor) InterceptWorkflow(
 func (w *WorkerInterceptor) InterceptActivity(
 	ctx context.Context, next interceptor.ActivityInboundInterceptor,
 ) interceptor.ActivityInboundInterceptor {
-	i := &activityInboundInterceptor{validator: w.validator}
+	i := &activityInboundInterceptor{validator: w.validator, logs: w.logs.Named("actvity")}
 	i.Next = next
 	return i
 }
@@ -70,6 +73,7 @@ func (i *workflowInboundInterceptor) ExecuteWorkflow(
 type activityInboundInterceptor struct {
 	interceptor.ActivityInboundInterceptorBase
 
+	logs      *zap.Logger
 	validator protovalidate.Validator
 }
 
@@ -79,6 +83,8 @@ func (i *activityInboundInterceptor) ExecuteActivity(
 	if err := validateArgs(i.validator, inp.Args); err != nil {
 		return nil, err
 	}
+
+	ctx = stdctx.WithLogger(ctx, i.logs)
 
 	return i.Next.ExecuteActivity(ctx, inp)
 }
