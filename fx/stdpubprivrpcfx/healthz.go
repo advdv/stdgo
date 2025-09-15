@@ -8,15 +8,15 @@ import (
 	"github.com/advdv/bhttp"
 )
 
-type HealthCheck func(ctx context.Context, r *http.Request) error
+type HealthCheck func(ctx context.Context, r *http.Request, isPrivate bool) error
 
-func healthz(cfg Config, hc HealthCheck) bhttp.HandlerFunc[context.Context] {
+func healthz(cfg Config, hc HealthCheck, isPrivate bool) bhttp.HandlerFunc[context.Context] {
 	return func(ctx context.Context, w bhttp.ResponseWriter, r *http.Request) error {
 		if r.URL.Query().Get("force_panic") != "" && cfg.AllowForcedPanics {
 			panic("forced panic")
 		}
 
-		if err := hc(ctx, r); err != nil {
+		if err := hc(ctx, r, isPrivate); err != nil {
 			return bhttp.NewError(bhttp.CodePreconditionFailed, err)
 		}
 

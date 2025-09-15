@@ -75,7 +75,7 @@ func setupAll(tb testing.TB, more ...any) (
 		fx.Populate(more...),
 		fx.Provide(newRPC),
 		fx.Provide(protovalidate.New),
-		fx.Supply(stdpubprivrpcfx.HealthCheck(func(ctx context.Context, r *http.Request) error {
+		fx.Supply(stdpubprivrpcfx.HealthCheck(func(ctx context.Context, r *http.Request, isPrivate bool) error {
 			if r.URL.Query().Get("failhc") != "" {
 				return fmt.Errorf("fail")
 			}

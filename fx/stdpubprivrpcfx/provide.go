@@ -89,10 +89,10 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 
 	res.Public = withNonRPCHandling(
 		deps.Lifecycle,
-		pubHdlr, deps.Logger, deps.Config, deps.HealthCheck, nil, deps.NewPrivateReadWriteClient)
+		pubHdlr, deps.Logger, deps.Config, false, deps.HealthCheck, nil, deps.NewPrivateReadWriteClient)
 	res.Private = withNonRPCHandling(
 		deps.Lifecycle,
-		privMux, deps.Logger, deps.Config, deps.HealthCheck, deps.LambdaRelays, deps.NewPrivateReadWriteClient)
+		privMux, deps.Logger, deps.Config, true, deps.HealthCheck, deps.LambdaRelays, deps.NewPrivateReadWriteClient)
 	return res, nil
 }
 
@@ -120,6 +120,7 @@ func withNonRPCHandling[PRIVRWC any](
 	rpcHandler http.Handler,
 	logs *zap.Logger,
 	cfg Config,
+	isPrivate bool,
 	hcheck HealthCheck,
 	LambdaRelays []*LambdaRelay[PRIVRWC],
 	newPrivateClientFn func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
@@ -139,7 +140,7 @@ func withNonRPCHandling[PRIVRWC any](
 	)
 
 	// mount some none-rpc endpoints
-	mux.HandleFunc("/healthz", healthz(cfg, hcheck)) // health check endpoint.
+	mux.HandleFunc("/healthz", healthz(cfg, hcheck, isPrivate)) // health check endpoint.
 
 	// mount the rpc API.
 	base.Handle(cfg.RPCBasePath+"/", http.StripPrefix(cfg.RPCBasePath, rpcHandler))
