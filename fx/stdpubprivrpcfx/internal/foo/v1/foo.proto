@@ -1,0 +1,26 @@
+edition = "2023";
+
+package fx.stdpubprivrpcfx.internal.foo.v1;
+
+import "buf/validate/validate.proto";
+
+message InitOrganizationRequest {}
+message InitOrganizationResponse {}
+
+service SystemService {
+  rpc InitOrganization(InitOrganizationRequest) returns (InitOrganizationResponse);
+}
+
+service ReadWriteService {}
+
+message WhoAmIRequest {
+  string echo = 1 [(buf.validate.field).required = true];
+}
+
+message WhoAmIResponse {
+  string greeting = 2 [(buf.validate.field).required = true];
+}
+
+service ReadOnlyService {
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+}

@@ -10,6 +10,7 @@ require (
 	connectrpc.com/authn v0.2.0
 	connectrpc.com/connect v1.18.1
 	connectrpc.com/cors v0.1.0
+	connectrpc.com/validate v0.3.0
 	entgo.io/ent v0.14.5
 	github.com/advdv/bhttp v0.3.2
 	github.com/aws/aws-cdk-go/awscdk/v2 v2.173.4
@@ -54,6 +55,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
+	go.akshayshah.org/memhttp v0.1.0
 	go.temporal.io/api v1.53.0
 	go.temporal.io/sdk v1.36.0
 	go.uber.org/fx v1.23.0
@@ -235,6 +237,7 @@ require (
 )
 
 tool (
+	connectrpc.com/connect/cmd/protoc-gen-connect-go
 	entgo.io/ent/cmd/ent
 	github.com/cludden/protoc-gen-go-temporal/cmd/protoc-gen-go_temporal
 	github.com/vektra/mockery/v2

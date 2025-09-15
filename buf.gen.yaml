@@ -20,6 +20,17 @@ plugins:
   - local:
       - go
       - tool
+      - protoc-gen-connect-go
+    out: .
+    types:
+      - fx.stdpubprivrpcfx.internal.foo.v1.ReadWriteService
+      - fx.stdpubprivrpcfx.internal.foo.v1.ReadOnlyService
+      - fx.stdpubprivrpcfx.internal.foo.v1.SystemService
+    opt:
+      - paths=source_relative
+  - local:
+      - go
+      - tool
       - github.com/cludden/protoc-gen-go-temporal/cmd/protoc-gen-go_temporal
     out: .
     strategy: all
