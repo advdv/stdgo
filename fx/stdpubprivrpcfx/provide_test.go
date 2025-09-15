@@ -82,6 +82,7 @@ func setupAll(tb testing.TB, more ...any) (
 		})),
 		fx.Supply(authn.NewMiddleware(func(ctx context.Context, req *http.Request) (any, error) { return "a", nil })),
 		stdpubprivrpcfx.TestProvide(
+			testRpcBasePath,
 			foov1connect.NewReadOnlyServiceHandler,
 			foov1connect.NewReadWriteServiceHandler,
 			foov1connect.NewSystemServiceHandler,
@@ -89,7 +90,6 @@ func setupAll(tb testing.TB, more ...any) (
 			foov1connect.NewReadWriteServiceClient,
 			foov1connect.NewSystemServiceClient,
 		),
-		stdpubprivrpcfx.ProvideBasePath(testRpcBasePath),
 		stdpubprivrpcfx.ProvideLambdaRelay("foo-relay-1", func(
 			ctx context.Context, ev events.SNSEvent, sys foov1connect.SystemServiceClient,
 		) error {

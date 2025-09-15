@@ -29,7 +29,7 @@ type Config struct {
 	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS"`
 
 	// configuration set via a depdency.
-	basePath BasePath
+	basePath RPCBasePath
 }
 
 func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
@@ -37,7 +37,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	fx.Lifecycle
 
 	Config              Config
-	BasePath            BasePath
+	BasePath            RPCBasePath
 	Logger              *zap.Logger
 	Validator           protovalidate.Validator
 	AuthMiddleware      *authn.Middleware
@@ -168,6 +168,7 @@ func withNonRPCHandling[PRIVRWC any](
 
 // Provide the components as fx dependencies.
 func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
+	rpcBasePath string,
 	newPubROFunc func(svc PUBRO, opts ...connect.HandlerOption) (string, http.Handler),
 	newPubRWFunc func(svc PUBRW, opts ...connect.HandlerOption) (string, http.Handler),
 	newprivRWFunc func(svc PRIVRW, opts ...connect.HandlerOption) (string, http.Handler),
@@ -175,6 +176,7 @@ func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
 ) fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdpubprivrpc",
 		New[PUBRO, PUBRW, PRIVRW, PRIVRWC],
+		fx.Supply(RPCBasePath{rpcBasePath}),
 		fx.Supply(
 			newPubROFunc,
 			newPubRWFunc,
@@ -184,9 +186,13 @@ func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
 	)
 }
 
+// type to carry the rpc base path.
+type RPCBasePath struct{ V string }
+
 // TestProvide provides API clients for testing. We use the actual web public
 // and private HTTP handler to get as much parity as possible.
 func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
+	rpcBasePath string,
 	newPubROFunc func(svc PUBRO, opts ...connect.HandlerOption) (string, http.Handler),
 	newPubRWFunc func(svc PUBRW, opts ...connect.HandlerOption) (string, http.Handler),
 	newprivRWFunc func(svc PRIVRW, opts ...connect.HandlerOption) (string, http.Handler),
@@ -201,7 +207,7 @@ func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
 	}
 
 	return fx.Options(
-		Provide(newPubROFunc, newPubRWFunc, newprivRWFunc, newPrivRWCFunc),
+		Provide(rpcBasePath, newPubROFunc, newPubRWFunc, newprivRWFunc, newPrivRWCFunc),
 		fx.Provide(func(p struct {
 			fx.In
 
@@ -216,13 +222,13 @@ func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
 			}
 		}),
 
-		fx.Provide(func(ts testServers, bp BasePath) PUBROC {
+		fx.Provide(func(ts testServers, bp RPCBasePath) PUBROC {
 			return newPubROCFunc(ts.Public.Client(), ts.Public.URL+bp.V, clientOpts...)
 		}),
-		fx.Provide(func(ts testServers, bp BasePath) PUBRWC {
+		fx.Provide(func(ts testServers, bp RPCBasePath) PUBRWC {
 			return newPubRWCFunc(ts.Public.Client(), ts.Public.URL+bp.V, clientOpts...)
 		}),
-		fx.Provide(func(ts testServers, bp BasePath) PRIVRWC {
+		fx.Provide(func(ts testServers, bp RPCBasePath) PRIVRWC {
 			return newPrivRWCFunc(ts.Private.Client(), ts.Private.URL+bp.V, clientOpts...)
 		}),
 	)
