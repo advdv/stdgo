@@ -1,7 +1,7 @@
-// Package stdpgxstdtxfx provides database transactors.
+// Package stdenttxfx provides database transactors.
 //
 //go:generate go tool entgo.io/ent/cmd/ent generate ./testdata/schema --target testdata/model
-package stdpgxstdtxfx
+package stdenttxfx
 
 import (
 	"context"
@@ -63,7 +63,7 @@ func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error
 	// allow some logic to be run at the beginning of every transaction. Primarily to setu
 	// for Row-level security.
 	if params.TxBeginSQL != nil {
-		stdent.BeginHook(params.TxBeginSQL)
+		opts = append(opts, stdent.BeginHook(params.TxBeginSQL))
 	}
 
 	// read-write side
@@ -86,7 +86,7 @@ func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error
 
 // Provide provides the standard read-write/read-only separation.
 func Provide[T stdent.Tx, C stdent.Client[T]](applicationName string, clientFactory ClientFactoryFunc[T, C]) fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdpgxstdtxfx",
+	return stdfx.ZapEnvCfgModule[Config]("stdenttxfx",
 		New[T, C],
 		fx.Supply(clientFactory),
 

@@ -9,12 +9,12 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/migrate"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/migrate"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/user"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/user"
 )
 
 // Client is the client that holds all ent builders.

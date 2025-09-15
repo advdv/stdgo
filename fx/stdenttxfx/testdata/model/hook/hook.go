@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model"
 )
 
 // The UserFunc type is an adapter to allow the use of ordinary

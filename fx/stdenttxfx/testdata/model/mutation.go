@@ -10,7 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/predicate"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/predicate"
 )
 
 const (

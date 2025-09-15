@@ -1,4 +1,4 @@
-package stdpgxstdtxfx_test
+package stdenttxfx_test
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"entgo.io/ent/dialect"
+	"github.com/advdv/stdgo/fx/stdenttxfx"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdent"
@@ -57,7 +57,7 @@ func setup(tb testing.TB, other ...any) (context.Context, *stdent.Transactor[*mo
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw", "ro"),
-		stdpgxstdtxfx.TestProvide("testapp", "postgres", "postgres",
+		stdenttxfx.TestProvide("testapp", "postgres", "postgres",
 			func(driver dialect.Driver) *model.Client { return model.NewClient(model.Driver(driver)) }),
 		fx.Provide(testHook),
 		fx.Populate(&deps),

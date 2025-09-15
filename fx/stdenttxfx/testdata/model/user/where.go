@@ -4,7 +4,7 @@ package user
 
 import (
 	"entgo.io/ent/dialect/sql"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/predicate"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/predicate"
 )
 
 // ID filters vertices based on their ID field.

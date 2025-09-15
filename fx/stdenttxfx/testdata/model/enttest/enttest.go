@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model"
 	// required by schema hooks.
-	_ "github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/runtime"
+	_ "github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/migrate"
+	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/migrate"
 )
 
 type (

@@ -2,7 +2,7 @@
 
 package runtime
 
-// The schema-stitching logic is generated in github.com/advdv/stdgo/fx/stdpgxstdtxfx/testdata/model/runtime.go
+// The schema-stitching logic is generated in github.com/advdv/stdgo/fx/stdenttxfx/testdata/model/runtime.go
 
 const (
 	Version = "v0.14.5"                                         // Version of ent codegen.
