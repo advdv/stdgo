@@ -66,7 +66,6 @@ func setupAll(tb testing.TB, more ...any) (
 
 	app := fxtest.New(tb,
 		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPUBPRIVRPC_BASE_PATH":           testRpcBasePath,
 			"STDPUBPRIVRPC_ALLOW_FORCED_PANICS": "true",
 			"STDPUBPRIVRPC_RESPONSE_VALIDATION": "true",
 		}),
@@ -90,7 +89,7 @@ func setupAll(tb testing.TB, more ...any) (
 			foov1connect.NewReadWriteServiceClient,
 			foov1connect.NewSystemServiceClient,
 		),
-
+		stdpubprivrpcfx.ProvideBasePath(testRpcBasePath),
 		stdpubprivrpcfx.ProvideLambdaRelay("foo-relay-1", func(
 			ctx context.Context, ev events.SNSEvent, sys foov1connect.SystemServiceClient,
 		) error {

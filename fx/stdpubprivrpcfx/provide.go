@@ -19,8 +19,6 @@ import (
 )
 
 type Config struct {
-	// RPCBasePath configures at what path the rpc will be mounted. Start with slash, no tailing slash. e.g: '/xr'
-	RPCBasePath string `env:"BASE_PATH,required"`
 	// allow health endpoint to panic, for testing purposes.
 	AllowForcedPanics bool `env:"ALLOW_FORCED_PANICS"`
 	// response validation can be enabled in testing to catch errors early.
@@ -29,6 +27,9 @@ type Config struct {
 	CORSMaxAgeSeconds int `env:"CORS_MAX_AGE_SECONDS" envDefault:"3600"`
 	// allow configuration of CORS allowed origins
 	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS"`
+
+	// configuration set via a depdency.
+	basePath BasePath
 }
 
 func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
@@ -36,6 +37,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	fx.Lifecycle
 
 	Config              Config
+	BasePath            BasePath
 	Logger              *zap.Logger
 	Validator           protovalidate.Validator
 	AuthMiddleware      *authn.Middleware
@@ -57,6 +59,8 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	Private http.Handler `name:"private"`
 }, err error,
 ) {
+	deps.Config.basePath = deps.BasePath
+
 	reqValidator, err := validate.NewInterceptor(validate.WithValidator(deps.Validator))
 	if err != nil {
 		return res, fmt.Errorf("init validate interceptor: %w", err)
@@ -110,7 +114,7 @@ func newInMemSysClient[PRIVRWC any](
 
 	lc.Append(fx.Hook{OnStop: srv.Shutdown})
 
-	client := newPrivateClientFn(srv.Client(), srv.URL()+cfg.RPCBasePath)
+	client := newPrivateClientFn(srv.Client(), srv.URL()+cfg.basePath.V)
 	return client, nil
 }
 
@@ -143,7 +147,7 @@ func withNonRPCHandling[PRIVRWC any](
 	mux.HandleFunc("/healthz", healthz(cfg, hcheck, isPrivate)) // health check endpoint.
 
 	// mount the rpc API.
-	base.Handle(cfg.RPCBasePath+"/", http.StripPrefix(cfg.RPCBasePath, rpcHandler))
+	base.Handle(cfg.basePath.V+"/", http.StripPrefix(cfg.basePath.V, rpcHandler))
 
 	// lambda relays are built on the final mux.
 	final := stdhttpware.Apply(mux, logs)
@@ -212,14 +216,14 @@ func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
 			}
 		}),
 
-		fx.Provide(func(ts testServers, cfg Config) PUBROC {
-			return newPubROCFunc(ts.Public.Client(), ts.Public.URL+cfg.RPCBasePath, clientOpts...)
+		fx.Provide(func(ts testServers, bp BasePath) PUBROC {
+			return newPubROCFunc(ts.Public.Client(), ts.Public.URL+bp.V, clientOpts...)
 		}),
-		fx.Provide(func(ts testServers, cfg Config) PUBRWC {
-			return newPubRWCFunc(ts.Public.Client(), ts.Public.URL+cfg.RPCBasePath, clientOpts...)
+		fx.Provide(func(ts testServers, bp BasePath) PUBRWC {
+			return newPubRWCFunc(ts.Public.Client(), ts.Public.URL+bp.V, clientOpts...)
 		}),
-		fx.Provide(func(ts testServers, cfg Config) PRIVRWC {
-			return newPrivRWCFunc(ts.Private.Client(), ts.Private.URL+cfg.RPCBasePath, clientOpts...)
+		fx.Provide(func(ts testServers, bp BasePath) PRIVRWC {
+			return newPrivRWCFunc(ts.Private.Client(), ts.Private.URL+bp.V, clientOpts...)
 		}),
 	)
 }
