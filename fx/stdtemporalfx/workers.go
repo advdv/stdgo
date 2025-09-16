@@ -59,6 +59,14 @@ func NewWorkers(par struct {
 		interceptor:   par.WorkerInterceptor,
 	}
 
+	// if the workers are disabled we do not start/stop them. This is usefull if the same
+	// code as the service is run in a Lambda, or if the workers are started in a separate process.
+	if w.temporal.cfg.DisableWorkers == true {
+		w.logs.Info("workers are disabled, do not start/stop them")
+		return w, nil
+	}
+
+	// else add lc hooks for starting/stopping.
 	par.Append(fx.Hook{OnStart: w.Start, OnStop: w.Stop})
 	return w, nil
 }

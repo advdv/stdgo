@@ -33,6 +33,8 @@ type Config struct {
 	CreateAndUseRandomNamespace bool `env:"CREATE_AND_USE_RANDOM_NAMESPACE"`
 	// remove the namespace when the client shuts down, only taken into account with: CREATE_AND_USE_RANDOM_NAMESPACE
 	AutoRemoveNamespace bool `env:"AUTO_REMOVE_NAMESPACE"`
+	// in some cases the workers are not necessary to be run (such as when the code is also run as a Lambda)
+	DisableWorkers bool `env:"DISABLE_WORKERS"`
 }
 
 // Temporal holds a reference to the Temporal Temporal.
