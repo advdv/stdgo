@@ -3,6 +3,7 @@ package stdpubprivrpcfx_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -117,6 +118,19 @@ func TestRPCCalling(t *testing.T) {
 		resp, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: proto.String("abc")}.Build()))
 		require.NoError(t, err)
 		require.NotNil(t, resp.Msg)
+	})
+
+	t.Run("panic", func(t *testing.T) {
+		t.Parallel()
+		var obs *observer.ObservedLogs
+		ctx, _, _, ro, _, _ := setupAll(t, &obs)
+		_, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: proto.String("panic")}.Build()))
+		var cerr *connect.Error
+		if !errors.As(err, &cerr) {
+			t.Fatalf("not a connect error")
+		}
+
+		require.Len(t, obs.FilterMessage(`panic while serving request`).All(), 1)
 	})
 }
 

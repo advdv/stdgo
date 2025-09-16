@@ -129,7 +129,10 @@ func withNonRPCHandling[PRIVRWC any](
 	LambdaRelays []*LambdaRelay[PRIVRWC],
 	newPrivateClientFn func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
 ) http.Handler {
+	// mount the rpc API.
 	base := http.NewServeMux()
+	base.Handle(cfg.basePath.V+"/", http.StripPrefix(cfg.basePath.V, rpcHandler))
+
 	mux := bhttp.NewCustomServeMux(
 		bhttp.StdContextInit,
 		20*1024*1024, // 20MiB
@@ -146,10 +149,7 @@ func withNonRPCHandling[PRIVRWC any](
 	// mount some none-rpc endpoints
 	mux.HandleFunc("/healthz", healthz(cfg, hcheck, isPrivate)) // health check endpoint.
 
-	// mount the rpc API.
-	base.Handle(cfg.basePath.V+"/", http.StripPrefix(cfg.basePath.V, rpcHandler))
-
-	// lambda relays are built on the final mux.
+	// lambda relays need to call to an in-memory server of the final mux setup.
 	final := stdhttpware.Apply(mux, logs)
 	if len(LambdaRelays) > 0 {
 		sys, err := newInMemSysClient(licecycle, cfg, final, newPrivateClientFn)
@@ -157,9 +157,11 @@ func withNonRPCHandling[PRIVRWC any](
 			panic(fmt.Sprintf("init memsys for lambda relays: %v", err))
 		}
 
-		// create endpoints for every configured relay.
+		// create endpoints for every configured relay. But they are mounted on the non-final mux.
 		for _, relay := range LambdaRelays {
-			mux.HandleFunc("/lambda/"+relay.Slug, relay.CreateHandlerFromSysClient(sys))
+			pattern := "/lambda/" + relay.Slug
+			logs.Info("mounting lambda relay", zap.String("slug", relay.Slug), zap.String("pattern", pattern))
+			mux.HandleFunc(pattern, relay.CreateHandlerFromSysClient(sys))
 		}
 	}
 

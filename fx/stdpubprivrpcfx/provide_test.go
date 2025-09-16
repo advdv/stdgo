@@ -37,6 +37,10 @@ func (handler) WhoAmI(_ context.Context, req *connect.Request[foov1.WhoAmIReques
 		out.SetGreeting(req.Msg.GetEcho())
 	}
 
+	if req.Msg.GetEcho() == "panic" {
+		panic("panic me")
+	}
+
 	return connect.NewResponse(out), nil
 }
 
