@@ -51,7 +51,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 
 	// dependencies for building lambda relays.
 	NewPrivateReadWriteClient func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC
-	LambdaRelays              []*LambdaRelay[PRIVRWC] `group:"lambda_relays"`
+	LambdaRelays              []*LambdaRelay `group:"lambda_relays"`
 }) (res struct {
 	fx.Out
 
@@ -126,7 +126,7 @@ func withNonRPCHandling[PRIVRWC any](
 	cfg Config,
 	isPrivate bool,
 	hcheck HealthCheck,
-	LambdaRelays []*LambdaRelay[PRIVRWC],
+	LambdaRelays []*LambdaRelay,
 	newPrivateClientFn func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
 ) http.Handler {
 	// mount the rpc API.
