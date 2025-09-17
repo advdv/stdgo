@@ -84,6 +84,34 @@ func Serve() error {
 	return nil
 }
 
+// Build all the Docker containers.
+func Build() error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return fmt.Errorf("failed to load development env: %w", err)
+	}
+
+	if err := sh.Run("docker", "compose", "-f", "docker-compose.yml", "build"); err != nil {
+		return fmt.Errorf("failed to run: %w", err)
+	}
+
+	return nil
+}
+
+// BuildSome builds some of the Docker containers.
+func BuildSome(names string) error {
+	if err := stdmage.LoadEnv(devEnv); err != nil {
+		return fmt.Errorf("failed to load development env: %w", err)
+	}
+	args := []string{"compose", "-f", "docker-compose.yml", "build"}
+	args = append(args, strings.Split(names, ",")...)
+
+	if err := sh.Run("docker", args...); err != nil {
+		return fmt.Errorf("failed to run: %w", err)
+	}
+
+	return nil
+}
+
 // Release tags a version and pushes it to origin.
 func Release() error {
 	filename := "version.txt"

@@ -70,8 +70,8 @@ func Build() error {
 	os.Setenv("BUILDX_NO_DEFAULT_ATTESTATIONS", "1")
 
 	// instruct docker compose to build the image for us.
-	if err := stdmagedev.Serve(); err != nil {
-		return fmt.Errorf("build and serve new containers: %w", err)
+	if err := stdmagedev.Build(); err != nil {
+		return fmt.Errorf("build new containers: %w", err)
 	}
 
 	return nil
