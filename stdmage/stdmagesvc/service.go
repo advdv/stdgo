@@ -9,7 +9,6 @@ import (
 
 	"github.com/advdv/stdgo/stdmage/stdmagedev"
 	"github.com/destel/rill"
-	"github.com/iancoleman/strcase"
 	"github.com/magefile/mage/sh"
 )
 
@@ -102,7 +101,7 @@ func push(deploymentIdent string, doLogin bool) error {
 
 	{
 		// main image retagging and push
-		mainDockerImageToReTag := fmt.Sprintf("%s-%s%s", _composeProjectName, _dockerImagePrefix, strcase.ToKebab(_serviceIdent))
+		mainDockerImageToReTag := fmt.Sprintf("%s-%s%s", _composeProjectName, _dockerImagePrefix, _serviceIdent)
 		mainImageFinalTag := fmt.Sprintf("%s/%s:%s", _registry, service.RepositoryName, service.MainImageTag)
 		if err := sh.Run("docker", "tag",
 			mainDockerImageToReTag, mainImageFinalTag); err != nil {
