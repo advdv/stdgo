@@ -16,6 +16,7 @@ import (
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/danielgtaylor/huma/v2"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 )
@@ -84,9 +85,11 @@ func setupAll(tb testing.TB, more ...any) (
 			}
 			return nil
 		})),
+		fx.Supply(huma.DefaultConfig("Test", "v0.0.0")),
 		fx.Supply(authn.NewMiddleware(func(ctx context.Context, req *http.Request) (any, error) { return "a", nil })),
 		stdpubprivrpcfx.TestProvide(
 			testRpcBasePath,
+			true,
 			foov1connect.NewReadOnlyServiceHandler,
 			foov1connect.NewReadWriteServiceHandler,
 			foov1connect.NewSystemServiceHandler,

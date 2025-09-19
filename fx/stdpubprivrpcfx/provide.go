@@ -13,6 +13,8 @@ import (
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcintercept"
 	"github.com/advdv/stdgo/stdfx"
 	"github.com/advdv/stdgo/stdhttpware"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"go.akshayshah.org/memhttp"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -52,6 +54,9 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	// dependencies for building lambda relays.
 	NewPrivateReadWriteClient func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC
 	LambdaRelays              []*LambdaRelay `group:"lambda_relays"`
+
+	// optionally server a public.
+	PublicOpenAPIMount *openAPIMount `optional:"true"`
 }) (res struct {
 	fx.Out
 
@@ -91,12 +96,18 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	pubHdlr := deps.AuthMiddleware.Wrap(pubMux)
 	/* ^ */ pubHdlr = corsMiddleware(pubHdlr)
 
+	// public RPC and OpenAPI
 	res.Public = withNonRPCHandling(
 		deps.Lifecycle,
-		pubHdlr, deps.Logger, deps.Config, false, deps.HealthCheck, nil, deps.NewPrivateReadWriteClient)
+		pubHdlr, deps.Logger, deps.Config, false, deps.HealthCheck, nil, deps.NewPrivateReadWriteClient,
+		deps.PublicOpenAPIMount)
+
+	// private RPC and never a OpenAPI
 	res.Private = withNonRPCHandling(
 		deps.Lifecycle,
-		privMux, deps.Logger, deps.Config, true, deps.HealthCheck, deps.LambdaRelays, deps.NewPrivateReadWriteClient)
+		privMux, deps.Logger, deps.Config, true, deps.HealthCheck, deps.LambdaRelays, deps.NewPrivateReadWriteClient,
+		deps.PublicOpenAPIMount)
+
 	return res, nil
 }
 
@@ -118,6 +129,37 @@ func newInMemSysClient[PRIVRWC any](
 	return client, nil
 }
 
+type openAPIMount struct {
+	pattern  string
+	stripped http.Handler
+}
+
+// newOpenAPI optionally sets up an Huma openapi instance for the application to
+func newOpenAPI(deps struct {
+	fx.In
+
+	BasePath  RPCBasePath
+	APIConfig huma.Config
+},
+) (res struct {
+	fx.Out
+	API          huma.API
+	OpenAPIMOunt *openAPIMount
+},
+) {
+	apiBasePath := deps.BasePath.V + "/o"
+	deps.APIConfig.Servers = append(deps.APIConfig.Servers, &huma.Server{URL: apiBasePath})
+	apiRouter := http.NewServeMux()
+	res.API = humago.New(apiRouter, deps.APIConfig)
+
+	res.OpenAPIMOunt = &openAPIMount{
+		pattern:  apiBasePath + "/",
+		stripped: http.StripPrefix(apiBasePath, apiRouter),
+	}
+
+	return res
+}
+
 // newPublicHandler turns a rpc handler into a http handler.
 func withNonRPCHandling[PRIVRWC any](
 	licecycle fx.Lifecycle,
@@ -128,6 +170,7 @@ func withNonRPCHandling[PRIVRWC any](
 	hcheck HealthCheck,
 	LambdaRelays []*LambdaRelay,
 	newPrivateClientFn func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
+	oapiMount *openAPIMount,
 ) http.Handler {
 	// mount the rpc API.
 	base := http.NewServeMux()
@@ -140,6 +183,12 @@ func withNonRPCHandling[PRIVRWC any](
 		base,
 		bhttp.NewReverser(),
 	)
+
+	// for the public side, mount a OpenAPI if provided.
+	if !isPrivate && oapiMount != nil {
+		logs.Info("mounting OpenAPI handler", zap.String("pattern", oapiMount.pattern))
+		base.Handle(oapiMount.pattern, oapiMount.stripped)
+	}
 
 	// handle server errors.
 	mux.Use(
@@ -170,14 +219,13 @@ func withNonRPCHandling[PRIVRWC any](
 
 // Provide the components as fx dependencies.
 func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
-	rpcBasePath string,
+	rpcBasePath string, withOpenAPI bool,
 	newPubROFunc func(svc PUBRO, opts ...connect.HandlerOption) (string, http.Handler),
 	newPubRWFunc func(svc PUBRW, opts ...connect.HandlerOption) (string, http.Handler),
 	newprivRWFunc func(svc PRIVRW, opts ...connect.HandlerOption) (string, http.Handler),
 	newPrivRWCFunc func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
 ) fx.Option {
-	return stdfx.ZapEnvCfgModule[Config]("stdpubprivrpc",
-		New[PUBRO, PUBRW, PRIVRW, PRIVRWC],
+	opts := []fx.Option{
 		fx.Supply(RPCBasePath{rpcBasePath}),
 		fx.Supply(
 			newPubROFunc,
@@ -185,6 +233,16 @@ func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
 			newprivRWFunc,
 			newPrivRWCFunc,
 		),
+	}
+
+	if withOpenAPI {
+		// if enabled, we provide and enforce it produces an API.
+		opts = append(opts, fx.Provide(newOpenAPI), fx.Invoke(func(huma.API) {}))
+	}
+
+	return stdfx.ZapEnvCfgModule[Config]("stdpubprivrpc",
+		New[PUBRO, PUBRW, PRIVRW, PRIVRWC],
+		opts...,
 	)
 }
 
@@ -194,7 +252,7 @@ type RPCBasePath struct{ V string }
 // TestProvide provides API clients for testing. We use the actual web public
 // and private HTTP handler to get as much parity as possible.
 func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
-	rpcBasePath string,
+	rpcBasePath string, withOpenAPI bool,
 	newPubROFunc func(svc PUBRO, opts ...connect.HandlerOption) (string, http.Handler),
 	newPubRWFunc func(svc PUBRW, opts ...connect.HandlerOption) (string, http.Handler),
 	newprivRWFunc func(svc PRIVRW, opts ...connect.HandlerOption) (string, http.Handler),
@@ -209,7 +267,7 @@ func TestProvide[PUBRO, PUBRW, PRIVRW, PUBROC, PUBRWC, PRIVRWC any](
 	}
 
 	return fx.Options(
-		Provide(rpcBasePath, newPubROFunc, newPubRWFunc, newprivRWFunc, newPrivRWCFunc),
+		Provide(rpcBasePath, withOpenAPI, newPubROFunc, newPubRWFunc, newprivRWFunc, newPrivRWCFunc),
 		fx.Provide(func(p struct {
 			fx.In
 

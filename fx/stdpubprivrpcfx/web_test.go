@@ -166,3 +166,13 @@ func TestLambdaRelayin(t *testing.T) {
 		require.Equal(t, `{"message":"Bad Request: no request body"}`+"\n", resp.Body.String())
 	})
 }
+
+func TestOpenApi(t *testing.T) {
+	t.Parallel()
+	var obs *observer.ObservedLogs
+	_, pubh, _, _, _, _ := setupAll(t, &obs)
+
+	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, testRpcBasePath+"/o/docs", nil)
+	pubh.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+}
