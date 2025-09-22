@@ -176,3 +176,15 @@ func TestOpenApi(t *testing.T) {
 	pubh.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
 }
+
+func TestOpenApiSpec(t *testing.T) {
+	t.Parallel()
+	var obs *observer.ObservedLogs
+	_, pubh, _, _, _, _ := setupAll(t, &obs)
+
+	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, testRpcBasePath+"/o/openapi-3.0.json", nil)
+	pubh.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+
+	require.Contains(t, rec.Body.String(), "https://foo.bar/xr/o") // report the absolute url
+}

@@ -71,8 +71,9 @@ func setupAll(tb testing.TB, more ...any) (
 
 	app := fxtest.New(tb,
 		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPUBPRIVRPC_ALLOW_FORCED_PANICS": "true",
-			"STDPUBPRIVRPC_RESPONSE_VALIDATION": "true",
+			"STDPUBPRIVRPC_ALLOW_FORCED_PANICS":       "true",
+			"STDPUBPRIVRPC_RESPONSE_VALIDATION":       "true",
+			"STDPUBPRIVRPC_OPENAPI_EXTERNAL_BASE_URL": "https://foo.bar",
 		}),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),

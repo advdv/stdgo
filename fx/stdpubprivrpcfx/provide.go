@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/authn"
@@ -29,6 +30,8 @@ type Config struct {
 	CORSMaxAgeSeconds int `env:"CORS_MAX_AGE_SECONDS" envDefault:"3600"`
 	// allow configuration of CORS allowed origins
 	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS"`
+	// for making the hosted openapi spec fully descriptive, the environmnet must specify how to reach it externally.
+	OpenAPIExternalBaseURL *url.URL `env:"OPENAPI_EXTERNAL_BASE_URL"`
 
 	// configuration set via a depdency.
 	basePath RPCBasePath
@@ -137,7 +140,7 @@ type openAPIMount struct {
 // newOpenAPI optionally sets up an Huma openapi instance for the application to
 func newOpenAPI(deps struct {
 	fx.In
-
+	Config    Config
 	BasePath  RPCBasePath
 	APIConfig huma.Config
 },
@@ -148,7 +151,15 @@ func newOpenAPI(deps struct {
 },
 ) {
 	apiBasePath := deps.BasePath.V + "/o"
-	deps.APIConfig.Servers = append(deps.APIConfig.Servers, &huma.Server{URL: apiBasePath})
+
+	// the url as set in the spec
+	serverURL := apiBasePath
+	if deps.Config.OpenAPIExternalBaseURL != nil {
+		deps.Config.OpenAPIExternalBaseURL.Path = apiBasePath
+		serverURL = deps.Config.OpenAPIExternalBaseURL.String()
+	}
+
+	deps.APIConfig.Servers = append(deps.APIConfig.Servers, &huma.Server{URL: serverURL})
 	apiRouter := http.NewServeMux()
 	res.API = humago.New(apiRouter, deps.APIConfig)
 
