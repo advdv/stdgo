@@ -17,7 +17,6 @@ import (
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/rs/cors"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 )
@@ -80,7 +79,6 @@ func setupAll(tb testing.TB, more ...any) (
 		stdzapfx.TestProvide(tb),
 		fx.Populate(more...),
 		fx.Provide(newRPC),
-		fx.Supply(fx.Annotate(cors.Options{}, fx.ResultTags(`name:"openapi"`))),
 		fx.Provide(protovalidate.New),
 		fx.Supply(stdpubprivrpcfx.HealthCheck(func(ctx context.Context, r *http.Request, isPrivate bool) error {
 			if r.URL.Query().Get("failhc") != "" {

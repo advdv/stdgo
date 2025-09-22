@@ -28,9 +28,11 @@ type Config struct {
 	// response validation can be enabled in testing to catch errors early.
 	ResponseValidation bool `env:"RESPONSE_VALIDATION"`
 	// cache the pre-flight response more readily, it is not dynamic.
-	ConnectCORSMaxAgeSeconds int `env:"CONNECT_CORS_MAX_AGE_SECONDS" envDefault:"3600"`
-	// allow configuration of CORS allowed origins
+	CORSMaxAgeSeconds int `env:"CONNECT_CORS_MAX_AGE_SECONDS" envDefault:"3600"`
+	// allow configuration of CORS allowed origins.
 	ConnectCORSAllowedOrigins []string `env:"CONNECT_CORS_ALLOWED_ORIGINS"`
+	// allow configuration for the OpenAPI endpoint.
+	OpenAPICORSAllowedOrigins []string `env:"OPENAPI_CORS_ALLOWED_ORIGINS"`
 	// for making the hosted openapi spec fully descriptive, the environmnet must specify how to reach it externally.
 	OpenAPIExternalBaseURL *url.URL `env:"OPENAPI_EXTERNAL_BASE_URL"`
 
@@ -94,7 +96,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 
 	// CORS for this part of the API, so web clients can call it.
 	corsMiddleware := stdhttpware.NewConnectCORSMiddleware(
-		deps.Config.ConnectCORSMaxAgeSeconds, deps.Config.ConnectCORSAllowedOrigins...)
+		deps.Config.CORSMaxAgeSeconds, deps.Config.ConnectCORSAllowedOrigins...)
 
 	// setup HTTP middleware for the public Connect RPC handler.
 	pubHdlr := deps.AuthMiddleware.Wrap(pubMux)
@@ -144,7 +146,6 @@ func newOpenAPI(deps struct {
 	Config    Config
 	BasePath  RPCBasePath
 	APIConfig huma.Config
-	CORS      cors.Options `name:"openapi"`
 },
 ) (res struct {
 	fx.Out
@@ -167,7 +168,17 @@ func newOpenAPI(deps struct {
 	res.API = humago.New(apiRouter, deps.APIConfig)
 
 	// middleware specific to the OpenAPI endpoint.
-	corsed := cors.New(deps.CORS).Handler(apiRouter)
+	corsed := cors.New(cors.Options{
+		AllowedOrigins: deps.Config.OpenAPICORSAllowedOrigins,
+		AllowedMethods: []string{
+			http.MethodHead, http.MethodGet, http.MethodPost,
+			http.MethodPut, http.MethodDelete, http.MethodPatch,
+		},
+		AllowedHeaders:   []string{"Authorization", "Cookie"},
+		ExposedHeaders:   []string{"Link", "SD-Request-Id"},
+		AllowCredentials: true,
+		MaxAge:           deps.Config.CORSMaxAgeSeconds,
+	}).Handler(apiRouter)
 	stripped := http.StripPrefix(apiBasePath, corsed)
 
 	res.OpenAPIMOunt = &openAPIMount{
