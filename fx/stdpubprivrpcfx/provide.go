@@ -16,6 +16,7 @@ import (
 	"github.com/advdv/stdgo/stdhttpware"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/rs/cors"
 	"go.akshayshah.org/memhttp"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -27,9 +28,9 @@ type Config struct {
 	// response validation can be enabled in testing to catch errors early.
 	ResponseValidation bool `env:"RESPONSE_VALIDATION"`
 	// cache the pre-flight response more readily, it is not dynamic.
-	CORSMaxAgeSeconds int `env:"CORS_MAX_AGE_SECONDS" envDefault:"3600"`
+	ConnectCORSMaxAgeSeconds int `env:"CONNECT_CORS_MAX_AGE_SECONDS" envDefault:"3600"`
 	// allow configuration of CORS allowed origins
-	CORSAllowedOrigins []string `env:"CORS_ALLOWED_ORIGINS"`
+	ConnectCORSAllowedOrigins []string `env:"CONNECT_CORS_ALLOWED_ORIGINS"`
 	// for making the hosted openapi spec fully descriptive, the environmnet must specify how to reach it externally.
 	OpenAPIExternalBaseURL *url.URL `env:"OPENAPI_EXTERNAL_BASE_URL"`
 
@@ -93,7 +94,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 
 	// CORS for this part of the API, so web clients can call it.
 	corsMiddleware := stdhttpware.NewConnectCORSMiddleware(
-		deps.Config.CORSMaxAgeSeconds, deps.Config.CORSAllowedOrigins...)
+		deps.Config.ConnectCORSMaxAgeSeconds, deps.Config.ConnectCORSAllowedOrigins...)
 
 	// setup HTTP middleware for the public Connect RPC handler.
 	pubHdlr := deps.AuthMiddleware.Wrap(pubMux)
@@ -143,6 +144,7 @@ func newOpenAPI(deps struct {
 	Config    Config
 	BasePath  RPCBasePath
 	APIConfig huma.Config
+	CORS      cors.Options `name:"openapi"`
 },
 ) (res struct {
 	fx.Out
@@ -161,11 +163,16 @@ func newOpenAPI(deps struct {
 
 	deps.APIConfig.Servers = append(deps.APIConfig.Servers, &huma.Server{URL: serverURL})
 	apiRouter := http.NewServeMux()
+
 	res.API = humago.New(apiRouter, deps.APIConfig)
+
+	// middleware specific to the OpenAPI endpoint.
+	corsed := cors.New(deps.CORS).Handler(apiRouter)
+	stripped := http.StripPrefix(apiBasePath, corsed)
 
 	res.OpenAPIMOunt = &openAPIMount{
 		pattern:  apiBasePath + "/",
-		stripped: http.StripPrefix(apiBasePath, apiRouter),
+		stripped: stripped,
 	}
 
 	return res
