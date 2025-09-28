@@ -13,6 +13,7 @@ import (
 	"fmt"
 	helpers "github.com/cludden/protoc-gen-go-temporal/pkg/helpers"
 	enumsv1 "go.temporal.io/api/enums/v1"
+	activity "go.temporal.io/sdk/activity"
 	client "go.temporal.io/sdk/client"
 	converter "go.temporal.io/sdk/converter"
 	temporal "go.temporal.io/sdk/temporal"
@@ -32,6 +33,11 @@ var TestServiceTaskQueue = "test-v1"
 // fx.stdtemporalfx.internal.v1.TestService workflow names
 const (
 	FooWorkflowName = "fx.stdtemporalfx.internal.v1.TestService.Foo"
+)
+
+// fx.stdtemporalfx.internal.v1.TestService activity names
+const (
+	BarActivityName = "fx.stdtemporalfx.internal.v1.TestService.Bar"
 )
 
 // TestServiceClient describes a client for a(n) fx.stdtemporalfx.internal.v1.TestService worker
@@ -632,10 +638,275 @@ func (r *FooChildRun) WaitStart(ctx workflow.Context) (*workflow.Execution, erro
 }
 
 // TestServiceActivities describes available worker activities
-type TestServiceActivities interface{}
+type TestServiceActivities interface {
+	// fx.stdtemporalfx.internal.v1.TestService.Bar implements a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity definition
+	Bar(ctx context.Context, req *BarInput) (*BarOutput, error)
+}
 
 // RegisterTestServiceActivities registers activities with a worker
-func RegisterTestServiceActivities(r worker.ActivityRegistry, activities TestServiceActivities) {}
+func RegisterTestServiceActivities(r worker.ActivityRegistry, activities TestServiceActivities) {
+	RegisterBarActivity(r, activities.Bar)
+}
+
+// RegisterBarActivity registers a fx.stdtemporalfx.internal.v1.TestService.Bar activity
+func RegisterBarActivity(r worker.ActivityRegistry, fn func(context.Context, *BarInput) (*BarOutput, error)) {
+	r.RegisterActivityWithOptions(fn, activity.RegisterOptions{
+		Name: BarActivityName,
+	})
+}
+
+// BarFuture describes a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity execution
+type BarFuture struct {
+	Future workflow.Future
+}
+
+// Get blocks on the activity's completion, returning the response
+func (f *BarFuture) Get(ctx workflow.Context) (*BarOutput, error) {
+	var resp BarOutput
+	if err := f.Future.Get(ctx, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// Select adds the activity's completion to the selector, callback can be nil
+func (f *BarFuture) Select(sel workflow.Selector, fn func(*BarFuture)) workflow.Selector {
+	return sel.AddFuture(f.Future, func(workflow.Future) {
+		if fn != nil {
+			fn(f)
+		}
+	})
+}
+
+// Bar executes a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity
+func Bar(ctx workflow.Context, req *BarInput, options ...*BarActivityOptions) (*BarOutput, error) {
+	return BarAsync(ctx, req, options...).Get(ctx)
+}
+
+// BarAsync executes a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity (asynchronously)
+func BarAsync(ctx workflow.Context, req *BarInput, options ...*BarActivityOptions) *BarFuture {
+	var o *BarActivityOptions
+	if len(options) > 0 && options[0] != nil {
+		o = options[0]
+	} else {
+		o = NewBarActivityOptions()
+	}
+	var err error
+	if ctx, err = o.Build(ctx); err != nil {
+		errF, errS := workflow.NewFuture(ctx)
+		errS.SetError(err)
+		return &BarFuture{Future: errF}
+	}
+	activity := BarActivityName
+	if o.dc != nil {
+		ctx = workflow.WithDataConverter(ctx, o.dc)
+	}
+	future := &BarFuture{Future: workflow.ExecuteActivity(ctx, activity, req)}
+	return future
+}
+
+// BarLocal executes a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity (locally)
+func BarLocal(ctx workflow.Context, req *BarInput, options ...*BarLocalActivityOptions) (*BarOutput, error) {
+	return BarLocalAsync(ctx, req, options...).Get(ctx)
+}
+
+// BarLocalAsync executes a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity (asynchronously, locally)
+func BarLocalAsync(ctx workflow.Context, req *BarInput, options ...*BarLocalActivityOptions) *BarFuture {
+	var o *BarLocalActivityOptions
+	if len(options) > 0 && options[0] != nil {
+		o = options[0]
+	} else {
+		o = NewBarLocalActivityOptions()
+	}
+	var err error
+	if ctx, err = o.Build(ctx); err != nil {
+		errF, errS := workflow.NewFuture(ctx)
+		errS.SetError(err)
+		return &BarFuture{Future: errF}
+	}
+	var activity any
+	if o.fn != nil {
+		activity = o.fn
+	} else {
+		activity = BarActivityName
+	}
+	if o.dc != nil {
+		ctx = workflow.WithDataConverter(ctx, o.dc)
+	}
+	future := &BarFuture{Future: workflow.ExecuteLocalActivity(ctx, activity, req)}
+	return future
+}
+
+// BarActivityOptions provides configuration for a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity
+type BarActivityOptions struct {
+	options                workflow.ActivityOptions
+	retryPolicy            *temporal.RetryPolicy
+	scheduleToCloseTimeout *time.Duration
+	startToCloseTimeout    *time.Duration
+	dc                     converter.DataConverter
+	heartbeatTimeout       *time.Duration
+	scheduleToStartTimeout *time.Duration
+	taskQueue              *string
+	waitForCancellation    *bool
+}
+
+// NewBarActivityOptions initializes a new BarActivityOptions value
+func NewBarActivityOptions() *BarActivityOptions {
+	return &BarActivityOptions{}
+}
+
+// Build initializes a workflow.Context with appropriate ActivityOptions values derived from schema defaults and any user-defined overrides
+func (o *BarActivityOptions) Build(ctx workflow.Context) (workflow.Context, error) {
+	opts := o.options
+	if v := o.heartbeatTimeout; v != nil {
+		opts.HeartbeatTimeout = *v
+	}
+	if v := o.retryPolicy; v != nil {
+		opts.RetryPolicy = v
+	}
+	if v := o.scheduleToCloseTimeout; v != nil {
+		opts.ScheduleToCloseTimeout = *v
+	}
+	if v := o.scheduleToStartTimeout; v != nil {
+		opts.ScheduleToStartTimeout = *v
+	}
+	if v := o.startToCloseTimeout; v != nil {
+		opts.StartToCloseTimeout = *v
+	} else if opts.StartToCloseTimeout == 0 {
+		opts.StartToCloseTimeout = 30000000000 // 30 seconds
+	}
+	if v := o.taskQueue; v != nil {
+		opts.TaskQueue = *v
+	} else if opts.TaskQueue == "" {
+		opts.TaskQueue = TestServiceTaskQueue
+	}
+	if v := o.waitForCancellation; v != nil {
+		opts.WaitForCancellation = *v
+	}
+	return workflow.WithActivityOptions(ctx, opts), nil
+}
+
+// WithActivityOptions specifies an initial ActivityOptions value to which defaults will be applied
+func (o *BarActivityOptions) WithActivityOptions(options workflow.ActivityOptions) *BarActivityOptions {
+	o.options = options
+	return o
+}
+
+// WithDataConverter registers a DataConverter for the (local) activity
+func (o *BarActivityOptions) WithDataConverter(dc converter.DataConverter) *BarActivityOptions {
+	o.dc = dc
+	return o
+}
+
+// WithHeartbeatTimeout sets the HeartbeatTimeout value
+func (o *BarActivityOptions) WithHeartbeatTimeout(d time.Duration) *BarActivityOptions {
+	o.heartbeatTimeout = &d
+	return o
+}
+
+// WithRetryPolicy sets the RetryPolicy value
+func (o *BarActivityOptions) WithRetryPolicy(policy *temporal.RetryPolicy) *BarActivityOptions {
+	o.retryPolicy = policy
+	return o
+}
+
+// WithScheduleToCloseTimeout sets the ScheduleToCloseTimeout value
+func (o *BarActivityOptions) WithScheduleToCloseTimeout(d time.Duration) *BarActivityOptions {
+	o.scheduleToCloseTimeout = &d
+	return o
+}
+
+// WithScheduleToStartTimeout sets the ScheduleToStartTimeout value
+func (o *BarActivityOptions) WithScheduleToStartTimeout(d time.Duration) *BarActivityOptions {
+	o.scheduleToStartTimeout = &d
+	return o
+}
+
+// WithStartToCloseTimeout sets the StartToCloseTimeout value
+func (o *BarActivityOptions) WithStartToCloseTimeout(d time.Duration) *BarActivityOptions {
+	o.startToCloseTimeout = &d
+	return o
+}
+
+// WithTaskQueue sets the TaskQueue value
+func (o *BarActivityOptions) WithTaskQueue(tq string) *BarActivityOptions {
+	o.taskQueue = &tq
+	return o
+}
+
+// WithWaitForCancellation sets the WaitForCancellation value
+func (o *BarActivityOptions) WithWaitForCancellation(wait bool) *BarActivityOptions {
+	o.waitForCancellation = &wait
+	return o
+}
+
+// BarLocalActivityOptions provides configuration for a(n) fx.stdtemporalfx.internal.v1.TestService.Bar activity
+type BarLocalActivityOptions struct {
+	options                workflow.LocalActivityOptions
+	retryPolicy            *temporal.RetryPolicy
+	scheduleToCloseTimeout *time.Duration
+	startToCloseTimeout    *time.Duration
+	dc                     converter.DataConverter
+	fn                     func(context.Context, *BarInput) (*BarOutput, error)
+}
+
+// NewBarLocalActivityOptions initializes a new BarLocalActivityOptions value
+func NewBarLocalActivityOptions() *BarLocalActivityOptions {
+	return &BarLocalActivityOptions{}
+}
+
+// Build initializes a workflow.Context with appropriate LocalActivityOptions values derived from schema defaults and any user-defined overrides
+func (o *BarLocalActivityOptions) Build(ctx workflow.Context) (workflow.Context, error) {
+	opts := o.options
+	if v := o.retryPolicy; v != nil {
+		opts.RetryPolicy = v
+	}
+	if v := o.scheduleToCloseTimeout; v != nil {
+		opts.ScheduleToCloseTimeout = *v
+	}
+	if v := o.startToCloseTimeout; v != nil {
+		opts.StartToCloseTimeout = *v
+	} else if opts.StartToCloseTimeout == 0 {
+		opts.StartToCloseTimeout = 30000000000 // 30 seconds
+	}
+	return workflow.WithLocalActivityOptions(ctx, opts), nil
+}
+
+// Local specifies a custom fx.stdtemporalfx.internal.v1.TestService.Bar implementation
+func (o *BarLocalActivityOptions) Local(fn func(context.Context, *BarInput) (*BarOutput, error)) *BarLocalActivityOptions {
+	o.fn = fn
+	return o
+}
+
+// WithLocalActivityOptions specifies an initial LocalActivityOptions value to which defaults will be applied
+func (o *BarLocalActivityOptions) WithLocalActivityOptions(options workflow.LocalActivityOptions) *BarLocalActivityOptions {
+	o.options = options
+	return o
+}
+
+// WithDataConverter registers a DataConverter for the (local) activity
+func (o *BarLocalActivityOptions) WithDataConverter(dc converter.DataConverter) *BarLocalActivityOptions {
+	o.dc = dc
+	return o
+}
+
+// WithRetryPolicy sets the RetryPolicy value
+func (o *BarLocalActivityOptions) WithRetryPolicy(policy *temporal.RetryPolicy) *BarLocalActivityOptions {
+	o.retryPolicy = policy
+	return o
+}
+
+// WithScheduleToCloseTimeout sets the ScheduleToCloseTimeout value
+func (o *BarLocalActivityOptions) WithScheduleToCloseTimeout(d time.Duration) *BarLocalActivityOptions {
+	o.scheduleToCloseTimeout = &d
+	return o
+}
+
+// WithStartToCloseTimeout sets the StartToCloseTimeout value
+func (o *BarLocalActivityOptions) WithStartToCloseTimeout(d time.Duration) *BarLocalActivityOptions {
+	o.startToCloseTimeout = &d
+	return o
+}
 
 // TestClient provides a testsuite-compatible Client
 type TestTestServiceClient struct {

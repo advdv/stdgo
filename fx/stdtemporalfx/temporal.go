@@ -44,7 +44,9 @@ type Temporal struct {
 	namespace string
 	c         client.Client
 	nsClient  client.NamespaceClient
-	cintr     *ClientInterceptor
+
+	propagators  []workflow.ContextPropagator
+	interceptors []interceptor.ClientInterceptor
 }
 
 // New inits the Temporal client.
@@ -52,15 +54,19 @@ func New(par struct {
 	fx.In
 	fx.Lifecycle
 
-	Config            Config
-	Logger            *zap.Logger
-	ClientInterceptor *ClientInterceptor
+	Config Config
+	Logger *zap.Logger
+
+	// propagators and interceptrs, the order matter so we can't use value groups (directly).
+	Propagators  []workflow.ContextPropagator    `optional:"true"`
+	Interceptors []interceptor.ClientInterceptor `optional:"true"`
 },
 ) (*Temporal, error) {
 	c := &Temporal{
-		cfg:   par.Config,
-		logs:  par.Logger,
-		cintr: par.ClientInterceptor,
+		cfg:          par.Config,
+		logs:         par.Logger,
+		propagators:  par.Propagators,
+		interceptors: par.Interceptors,
 	}
 
 	par.Append(fx.Hook{
@@ -109,8 +115,8 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 		HostPort:           c.cfg.TemporalHostPort,
 		Logger:             tlog.NewStructuredLogger(slogs),
 		Namespace:          c.namespace,
-		ContextPropagators: []workflow.ContextPropagator{},
-		Interceptors:       []interceptor.ClientInterceptor{c.cintr},
+		ContextPropagators: c.propagators,
+		Interceptors:       c.interceptors,
 	}
 
 	if c.cfg.TemporalAPIKey != "" {
@@ -165,8 +171,11 @@ func (c *Temporal) Stop(ctx context.Context) (err error) {
 
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdtemporal",
+		// provide the temporal client.
 		New,
-		fx.Provide(NewWorkerInterceptor, NewClientInterceptor),
+		// provide the default interceptors/propagators
+		fx.Provide(NewDefaultWorkerInterceptor, NewDefaultClientInterceptor),
+		// provide the workers
 		fx.Provide(NewWorkers),
 	)
 }

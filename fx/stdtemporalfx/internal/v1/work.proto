@@ -10,9 +10,18 @@ message FooInput {
 }
 message FooOutput {}
 
+message BarInput {}
+message BarOutput {}
+
 service TestService {
   option (temporal.v1.service) = {task_queue: "test-v1"};
   rpc Foo(FooInput) returns (FooOutput) {
     option (temporal.v1.workflow) = {};
+  }
+
+  rpc Bar(BarInput) returns (BarOutput) {
+    option (temporal.v1.activity) = {
+      start_to_close_timeout: {seconds: 30}
+    };
   }
 }

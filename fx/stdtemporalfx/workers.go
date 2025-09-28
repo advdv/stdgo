@@ -39,24 +39,25 @@ type Workers struct {
 	temporal      *Temporal
 	registrations []*Registration
 	workers       []worker.Worker
-	interceptor   *WorkerInterceptor
+	interceptors  []interceptor.WorkerInterceptor `optional:"true"`
 }
 
 // NewWorkers inits a new set of workers.
 func NewWorkers(par struct {
 	fx.In
 	fx.Lifecycle
-	Logger            *zap.Logger
-	Temporal          *Temporal
-	WorkerInterceptor *WorkerInterceptor
-	Registrations     []*Registration `group:"registrations"`
+	Logger   *zap.Logger
+	Temporal *Temporal
+
+	Interceptors  []interceptor.WorkerInterceptor
+	Registrations []*Registration `group:"registrations"`
 },
 ) (*Workers, error) {
 	w := &Workers{
 		logs:          par.Logger,
 		temporal:      par.Temporal,
 		registrations: par.Registrations,
-		interceptor:   par.WorkerInterceptor,
+		interceptors:  par.Interceptors,
 	}
 
 	// if the workers are disabled we do not start/stop them. This is usefull if the same
@@ -79,9 +80,7 @@ func (w *Workers) Start(context.Context) error {
 			OnFatalError: func(err error) {
 				logs.Error("fatal worker error", zap.Error(err))
 			},
-			Interceptors: []interceptor.WorkerInterceptor{
-				w.interceptor,
-			},
+			Interceptors: w.interceptors,
 		})
 
 		registration.regFn(worker)

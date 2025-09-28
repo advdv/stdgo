@@ -7,6 +7,7 @@ import (
 
 	"buf.build/go/protovalidate"
 	"github.com/advdv/stdgo/stdctx"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/interceptor"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -14,28 +15,28 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type WorkerInterceptor struct {
+type DefaultWorkerInterceptor struct {
 	interceptor.InterceptorBase
 
 	logs      *zap.Logger
 	validator protovalidate.Validator
 }
 
-// NewWorkerInterceptor initializes an interceptor for our worker. It implements
+// NewDefaultWorkerInterceptor initializes an interceptor for our worker. It implements
 // cross-cutting concerns for all activity and workflow execution. Such as
 // input validation.
-func NewWorkerInterceptor(
+func NewDefaultWorkerInterceptor(
 	val protovalidate.Validator,
 	logs *zap.Logger,
-) *WorkerInterceptor {
-	return &WorkerInterceptor{
+) *DefaultWorkerInterceptor {
+	return &DefaultWorkerInterceptor{
 		validator: val,
 		logs:      logs.Named("worker"),
 	}
 }
 
 // InterceptWorkflow intercepts workflows.
-func (w *WorkerInterceptor) InterceptWorkflow(
+func (w *DefaultWorkerInterceptor) InterceptWorkflow(
 	ctx workflow.Context, next interceptor.WorkflowInboundInterceptor,
 ) interceptor.WorkflowInboundInterceptor {
 	i := &workflowInboundInterceptor{validator: w.validator}
@@ -44,7 +45,7 @@ func (w *WorkerInterceptor) InterceptWorkflow(
 }
 
 // InterceptActivity intercepts activities.
-func (w *WorkerInterceptor) InterceptActivity(
+func (w *DefaultWorkerInterceptor) InterceptActivity(
 	ctx context.Context, next interceptor.ActivityInboundInterceptor,
 ) interceptor.ActivityInboundInterceptor {
 	i := &activityInboundInterceptor{validator: w.validator, logs: w.logs.Named("actvity")}
@@ -84,7 +85,17 @@ func (i *activityInboundInterceptor) ExecuteActivity(
 		return nil, err
 	}
 
-	ctx = stdctx.WithLogger(ctx, i.logs)
+	// we setup a new logger for each activity being executed.
+	actInfo := activity.GetInfo(ctx)
+	logs := i.logs.With(
+		zap.String("activity_id", actInfo.ActivityID),
+		zap.String("activity_type_name", actInfo.ActivityType.Name),
+		zap.String("workflow_execution_id", actInfo.WorkflowExecution.ID),
+		zap.String("workflow_execution_run_id", actInfo.WorkflowExecution.RunID),
+	)
+
+	// and include it in the context.
+	ctx = stdctx.WithLogger(ctx, logs)
 
 	return i.Next.ExecuteActivity(ctx, inp)
 }

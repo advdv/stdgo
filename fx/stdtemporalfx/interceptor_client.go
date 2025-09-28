@@ -2,24 +2,25 @@ package stdtemporalfx
 
 import (
 	"context"
+	"fmt"
 
 	"buf.build/go/protovalidate"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/interceptor"
 )
 
-// ClientInterceptor validates workflow & signal/update args on the caller side.
-type ClientInterceptor struct {
+// DefaultClientInterceptor validates workflow & signal/update args on the caller side.
+type DefaultClientInterceptor struct {
 	interceptor.ClientInterceptorBase
 
 	validator protovalidate.Validator
 }
 
-func NewClientInterceptor(val protovalidate.Validator) *ClientInterceptor {
-	return &ClientInterceptor{validator: val}
+func NewDefaultClientInterceptor(val protovalidate.Validator) *DefaultClientInterceptor {
+	return &DefaultClientInterceptor{validator: val}
 }
 
-func (c *ClientInterceptor) InterceptClient(
+func (c *DefaultClientInterceptor) InterceptClient(
 	next interceptor.ClientOutboundInterceptor,
 ) interceptor.ClientOutboundInterceptor {
 	ci := &clientOutboundInterceptor{validator: c.validator}
@@ -39,7 +40,7 @@ func (i *clientOutboundInterceptor) ExecuteWorkflow(
 	in *interceptor.ClientExecuteWorkflowInput,
 ) (client.WorkflowRun, error) {
 	if err := validateArgs(i.validator, in.Args); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("client validation: %w", err)
 	}
 	return i.Next.ExecuteWorkflow(ctx, in)
 }
