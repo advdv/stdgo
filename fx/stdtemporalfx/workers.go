@@ -39,7 +39,7 @@ type Workers struct {
 	temporal      *Temporal
 	registrations []*Registration
 	workers       []worker.Worker
-	interceptors  []interceptor.WorkerInterceptor `optional:"true"`
+	interceptors  []interceptor.WorkerInterceptor
 }
 
 // NewWorkers inits a new set of workers.
@@ -49,8 +49,8 @@ func NewWorkers(par struct {
 	Logger   *zap.Logger
 	Temporal *Temporal
 
-	Interceptors  []interceptor.WorkerInterceptor
-	Registrations []*Registration `group:"registrations"`
+	Interceptors  []interceptor.WorkerInterceptor `optional:"true"`
+	Registrations []*Registration                 `group:"registrations"`
 },
 ) (*Workers, error) {
 	w := &Workers{
