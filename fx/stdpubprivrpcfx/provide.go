@@ -89,7 +89,7 @@ func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	pubMux.Handle(path, handler)
 
 	path, handler = deps.NewPublicReadWrite(deps.PublicReadWrite, connect.WithInterceptors(interceptors...))
-	privMux.Handle(path, handler)
+	pubMux.Handle(path, handler)
 
 	path, handler = deps.NewPrivateReadWrite(deps.PrivateReadWrite, connect.WithInterceptors(interceptors...))
 	privMux.Handle(path, handler)
