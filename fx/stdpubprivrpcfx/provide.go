@@ -143,9 +143,10 @@ type openAPIMount struct {
 // newOpenAPI optionally sets up an Huma openapi instance for the application to
 func newOpenAPI(deps struct {
 	fx.In
-	Config    Config
-	BasePath  RPCBasePath
-	APIConfig huma.Config
+	Config         Config
+	BasePath       RPCBasePath
+	APIConfig      huma.Config
+	APIDocsHandler http.Handler `name:"api_docs_handler" optional:"true"`
 },
 ) (res struct {
 	fx.Out
@@ -165,6 +166,12 @@ func newOpenAPI(deps struct {
 	deps.APIConfig.Servers = append(deps.APIConfig.Servers, &huma.Server{URL: serverURL})
 	apiRouter := http.NewServeMux()
 
+	// serve the docs endpoint ourselves, with the more capable scalar docs
+	if deps.APIDocsHandler != nil {
+		apiRouter.Handle("/docs", deps.APIDocsHandler)
+	}
+
+	// serve the Huma routes.
 	res.API = humago.New(apiRouter, deps.APIConfig)
 
 	// middleware specific to the OpenAPI endpoint.
