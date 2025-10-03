@@ -7,5 +7,5 @@ import (
 )
 
 func init() {
-	stdmagedev.Init("dev")
+	stdmagedev.Init("dev", "")
 }

@@ -14,11 +14,15 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
-var devEnv = "dev"
+var (
+	devEnv      = "dev"
+	_runPkgPath = ""
+)
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
-func Init(dotEnvDevEnv string, _ ...[]string) {
+func Init(dotEnvDevEnv string, runPkgPath string, _ ...[]string) {
 	devEnv = dotEnvDevEnv
+	_runPkgPath = runPkgPath
 
 	stdmage.MustBeInRootIfNotTest()
 }
@@ -136,6 +140,19 @@ func Release() error {
 
 	if err := sh.Run("git", "push", "origin", tagName); err != nil {
 		return fmt.Errorf("failed to push version tag: %w", err)
+	}
+
+	return nil
+}
+
+// Run the main service code directly (without docker) while loading the dev environment.
+func Run() error {
+	if err := stdmage.LoadEnv("dev"); err != nil {
+		return fmt.Errorf("failed to load development env: %w", err)
+	}
+
+	if err := sh.Run("go", "run", _runPkgPath); err != nil {
+		return fmt.Errorf("failed to run: %w", err)
 	}
 
 	return nil
