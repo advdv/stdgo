@@ -27,6 +27,9 @@ func TestSetup(t *testing.T) {
 	require.NotNil(t, ctx)
 	require.NotNil(t, ro)
 	require.NotNil(t, rw)
+
+	require.True(t, ro.IsReadOnly())
+	require.False(t, rw.IsReadOnly())
 }
 
 func testHook(logs *zap.Logger) (out struct {

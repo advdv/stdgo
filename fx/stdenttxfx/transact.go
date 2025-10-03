@@ -80,7 +80,7 @@ func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error
 
 	return Result[T]{
 		ReadWrite: stdent.New(rwClient),
-		ReadOnly:  stdent.New(roClient),
+		ReadOnly:  stdent.New(roClient, stdent.ReadOnly(true)),
 	}, nil
 }
 

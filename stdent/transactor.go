@@ -37,6 +37,10 @@ type Transactor[T Tx] struct {
 	client Client[T]
 }
 
+func (txr Transactor[T]) IsReadOnly() bool {
+	return txr.opts.readOnly
+}
+
 func New[T Tx](client Client[T], opts ...Option) *Transactor[T] {
 	txr := &Transactor[T]{client: client}
 
