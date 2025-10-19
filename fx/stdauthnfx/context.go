@@ -1,18 +1,42 @@
 package stdauthnfx
 
-import "context"
+import (
+	"context"
+
+	"buf.build/go/protovalidate"
+	stdauthnfxv1 "github.com/advdv/stdgo/fx/stdauthnfx/v1"
+	"google.golang.org/protobuf/proto"
+)
 
 type ctxKey string
 
-func WithIdentity(ctx context.Context, idn Identity) context.Context {
-	return context.WithValue(ctx, ctxKey("identity"), idn)
-}
-
-func IdentityFromContext(ctx context.Context) Identity {
-	idn, ok := ctx.Value(ctxKey("identity")).(Identity)
-	if !ok {
-		panic("stdauthnfx: no identity in context")
+func WithAccess(ctx context.Context, val protovalidate.Validator, access *stdauthnfxv1.Access) context.Context {
+	if err := val.Validate(access); err != nil {
+		panic("access: invalid access for context: " + err.Error())
 	}
 
-	return idn
+	return context.WithValue(ctx, ctxKey("access"), access)
+}
+
+func WithAnonymousAccess(ctx context.Context, val protovalidate.Validator) context.Context {
+	return WithAccess(ctx, val, stdauthnfxv1.Access_builder{
+		IsAnonymous: proto.Bool(true),
+	}.Build())
+}
+
+func WithWebUserAccess(
+	ctx context.Context, val protovalidate.Validator, info *stdauthnfxv1.AccessIdentity,
+) context.Context {
+	return WithAccess(ctx, val, stdauthnfxv1.Access_builder{
+		WebuserIdentity: info,
+	}.Build())
+}
+
+func FromContext(ctx context.Context) *stdauthnfxv1.Access {
+	v, ok := ctx.Value(ctxKey("access")).(*stdauthnfxv1.Access)
+	if !ok {
+		panic("access: no access information in context")
+	}
+
+	return v
 }

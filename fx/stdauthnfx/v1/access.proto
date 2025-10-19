@@ -1,0 +1,18 @@
+edition = "2023";
+
+package fx.stdauthnfx.v1;
+
+import "buf/validate/validate.proto";
+
+message AccessIdentity {
+  string subject = 1 [(buf.validate.field).required = true];
+}
+
+message Access {
+  oneof info {
+    option (buf.validate.oneof).required = true;
+    bool is_anonymous = 2;
+    bool is_system = 3;
+    AccessIdentity webuser_identity = 4;
+  }
+}
