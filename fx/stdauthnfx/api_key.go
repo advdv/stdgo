@@ -53,8 +53,8 @@ func (ac *AccessControl) BuildAndSignAPIKey(acc *stdauthnfxv1.Access) (string, e
 }
 
 func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) (context.Context, error) {
-	apiKey = strings.TrimPrefix(apiKey, APIKeyPrefix)
-	apiKeyb, err := base62.StdEncoding.DecodeString(apiKey)
+	noSuffixAPIKey := strings.TrimPrefix(apiKey, APIKeyPrefix)
+	apiKeyb, err := base62.StdEncoding.DecodeString(noSuffixAPIKey)
 	if err != nil {
 		return nil, errors.Errorf("decode api key: %w", err)
 	}
@@ -83,6 +83,8 @@ func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) 
 	if err := proto.Unmarshal(data, &acc); err != nil {
 		return nil, errors.Errorf("unmarshal access: %w", err)
 	}
+
+	ctx = WithAPIKeyFingerprint(ctx, ac.hasher, []byte(apiKey))
 
 	return WithAccess(ctx, ac.validator, &acc), nil
 }

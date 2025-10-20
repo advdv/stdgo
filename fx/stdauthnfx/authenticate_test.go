@@ -23,6 +23,10 @@ func TestAuthenticateAccessToken(t *testing.T) {
 	require.False(t, acc1.GetIsAnonymous())
 	require.Equal(t, "google-oauth2|114814749289287160219",
 		acc1.GetWebuserIdentity().GetSubject())
+
+	fp1, ok := stdauthnfx.APIKeyFingerprint(ctx)
+	require.Empty(t, fp1)
+	require.False(t, ok)
 }
 
 func TestAuthenticateAPIKey(t *testing.T) {
@@ -42,6 +46,11 @@ func TestAuthenticateAPIKey(t *testing.T) {
 	require.True(t, acc1.GetIsSystem())
 	require.False(t, acc1.GetIsAnonymous())
 	require.Nil(t, acc1.GetWebuserIdentity())
+
+	// in case of api key authentication we might want
+	fp1, ok := stdauthnfx.APIKeyFingerprint(ctx)
+	require.NotEmpty(t, fp1)
+	require.True(t, ok)
 }
 
 func TestAnonymous(t *testing.T) {
