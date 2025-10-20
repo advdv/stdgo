@@ -84,7 +84,7 @@ func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) 
 		return nil, errors.Errorf("unmarshal access: %w", err)
 	}
 
-	ctx = WithAPIKeyFingerprint(ctx, ac.hasher, []byte(apiKey))
+	ctx = WithAPIKeyFingerprint(ctx, ac.hasher(), []byte(apiKey))
 
 	return WithAccess(ctx, ac.validator, &acc), nil
 }

@@ -34,7 +34,7 @@ type Config struct {
 type AccessControl struct {
 	config    Config
 	validator protovalidate.Validator
-	hasher    hash.Hash
+	hasher    func() hash.Hash
 
 	// api key signing and validation
 	apiKeys struct {
@@ -54,7 +54,7 @@ func New(deps struct {
 	fx.In
 	Config    Config
 	Validator protovalidate.Validator
-	Hasher    hash.Hash `name:"api_key"`
+	Hasher    func() hash.Hash `name:"api_key"`
 },
 ) (res struct {
 	fx.Out
@@ -114,6 +114,6 @@ func New(deps struct {
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdauthn",
 		New,
-		fx.Provide(fx.Annotate(sha256.New,
+		fx.Supply(fx.Annotate(sha256.New,
 			fx.ResultTags(`name:"api_key"`))))
 }
