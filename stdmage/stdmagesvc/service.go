@@ -183,12 +183,22 @@ func UpdateService(deploymentIdent string) error {
 	return nil
 }
 
-// Deploy build and pushes a new docker image, then updates the service.
-func Deploy(deploymentIdent string) error {
-	return deploy(deploymentIdent, true, true)
+// DeployAllLambdas build and pushes a new docker image, then updates all the lambdas.
+func DeployAllLambdas(deploymentIdent string) error {
+	return deploy(deploymentIdent, true, true, false, true)
 }
 
-func deploy(deploymentIdent string, doBuild, doLogin bool) error {
+// DeployService build and pushes a new docker image, then updates just the lambdas.
+func DeployService(deploymentIdent string) error {
+	return deploy(deploymentIdent, true, true, true, false)
+}
+
+// Deploy build and pushes a new docker image, then updates the service.
+func Deploy(deploymentIdent string) error {
+	return deploy(deploymentIdent, true, true, true, true)
+}
+
+func deploy(deploymentIdent string, doBuild, doLogin, updateService, updateLambdas bool) error {
 	if doBuild {
 		if err := Build(); err != nil {
 			return fmt.Errorf("build: %w", err)
@@ -199,12 +209,16 @@ func deploy(deploymentIdent string, doBuild, doLogin bool) error {
 		return fmt.Errorf("push: %w", err)
 	}
 
-	if err := UpdateService(deploymentIdent); err != nil {
-		return fmt.Errorf("update service: %w", err)
+	if updateService {
+		if err := UpdateService(deploymentIdent); err != nil {
+			return fmt.Errorf("update service: %w", err)
+		}
 	}
 
-	if err := UpdateLambdas(deploymentIdent); err != nil {
-		return fmt.Errorf("update lambda: %w", err)
+	if updateLambdas {
+		if err := UpdateLambdas(deploymentIdent); err != nil {
+			return fmt.Errorf("update lambda: %w", err)
+		}
 	}
 
 	return nil
@@ -221,7 +235,7 @@ func DeployAll() error {
 	}
 
 	if err := rill.ForEach(rill.FromSlice(_deploymentIdents, nil), 5, func(deploymentIdent string) error {
-		return deploy(deploymentIdent, false, false)
+		return deploy(deploymentIdent, false, false, true, true)
 	}); err != nil {
 		return fmt.Errorf("for each deployment: %w", err)
 	}
