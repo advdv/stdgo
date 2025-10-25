@@ -144,16 +144,3 @@ func Release() error {
 
 	return nil
 }
-
-// Run the main service code directly (without docker) while loading the dev environment.
-func Run() error {
-	if err := stdmage.LoadEnv("dev"); err != nil {
-		return fmt.Errorf("failed to load development env: %w", err)
-	}
-
-	if err := sh.Run("go", "run", _runPkgPath); err != nil {
-		return fmt.Errorf("failed to run: %w", err)
-	}
-
-	return nil
-}
