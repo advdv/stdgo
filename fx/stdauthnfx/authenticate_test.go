@@ -13,9 +13,9 @@ import (
 
 func TestAuthenticateAccessToken(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t)
+	ctx, ac := setup(t, nil)
 
-	ctx, err := ac.Authenticate(ctx, "Bearer "+insecureaccesstools.TestAccessToken3)
+	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "Bearer "+insecureaccesstools.TestAccessToken3)
 	require.NoError(t, err)
 
 	acc1 := stdauthnfx.FromContext(ctx)
@@ -31,7 +31,7 @@ func TestAuthenticateAccessToken(t *testing.T) {
 
 func TestAuthenticateAPIKey(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t)
+	ctx, ac := setup(t, nil)
 
 	key1, err := ac.BuildAndSignAPIKey(stdauthnfxv1.Access_builder{
 		IsSystem: proto.Bool(true),
@@ -39,7 +39,7 @@ func TestAuthenticateAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(key1, stdauthnfx.APIKeyPrefix))
 
-	ctx, err = ac.Authenticate(ctx, "Bearer "+key1)
+	ctx, err = ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "Bearer "+key1)
 	require.NoError(t, err)
 
 	acc1 := stdauthnfx.FromContext(ctx)
@@ -53,11 +53,32 @@ func TestAuthenticateAPIKey(t *testing.T) {
 	require.True(t, ok)
 }
 
+func TestAnonymousNoHeader(t *testing.T) {
+	t.Parallel()
+	ctx, ac := setup(t, nil)
+
+	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
+	require.ErrorContains(t, err, "no authorization header")
+}
+
 func TestAnonymous(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t)
+	ctx, ac := setup(t, []string{"/acme.foo.v1.FooService/Bar"})
 
-	ctx, err := ac.Authenticate(ctx, "")
+	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
+	require.NoError(t, err)
+
+	acc1 := stdauthnfx.FromContext(ctx)
+	require.False(t, acc1.GetIsSystem())
+	require.True(t, acc1.GetIsAnonymous())
+	require.Nil(t, acc1.GetWebuserIdentity())
+}
+
+func TestAnonymousWildcard(t *testing.T) {
+	t.Parallel()
+	ctx, ac := setup(t, []string{"/*/*"})
+
+	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
 	require.NoError(t, err)
 
 	acc1 := stdauthnfx.FromContext(ctx)

@@ -29,6 +29,8 @@ type Config struct {
 	TokenAudience string `env:"TOKEN_AUDIENCE,required"`
 	// Configure a fixed wall-clock time as far as token validation is concerned. Only useful in testing.
 	FixedWallClockTimestamp int64 `env:"FIXED_WALL_CLOCK_TIMESTAMP"`
+	// AnonymousAccessWhitelist can be set to allow some rpcs to be accessed anonymously.
+	AnonymousAccessWhitelist []string `env:"ANONYMOUS_ACCESS_WHITELIST"`
 }
 
 type AccessControl struct {

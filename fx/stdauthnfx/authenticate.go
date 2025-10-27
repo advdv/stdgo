@@ -2,6 +2,7 @@ package stdauthnfx
 
 import (
 	"context"
+	"path"
 	"strings"
 
 	"github.com/advdv/stdgo/stdctx"
@@ -11,11 +12,21 @@ import (
 
 // Authenticate a HTTP authorization header value. If an empty string is passed, it is considered as not set
 // and the "anonymous" access behavior is triggered.
-func (ac *AccessControl) Authenticate(ctx context.Context, authzHeader string) (context.Context, error) {
+func (ac *AccessControl) Authenticate(ctx context.Context, rpcMethod, authzHeader string) (context.Context, error) {
 	logs := stdctx.Log(ctx)
 	if authzHeader == "" {
-		logs.Info("anonymous: no authorization header")
-		return WithAnonymousAccess(ctx, ac.validator), nil
+		// base on a whitelist in the environment, we allow anonymous access on some (or all) methods.
+		if checkWhiteList(rpcMethod, ac.config.AnonymousAccessWhitelist) {
+			logs.Info("anonymous authentication",
+				zap.String("rpc_method", rpcMethod),
+				zap.Strings("whitelist", ac.config.AnonymousAccessWhitelist))
+			return WithAnonymousAccess(ctx, ac.validator), nil
+		} else {
+			logs.Info("no anonymous authentication",
+				zap.String("rpc_method", rpcMethod),
+				zap.Strings("whitelist", ac.config.AnonymousAccessWhitelist))
+			return ctx, errors.Errorf("no authorization header")
+		}
 	}
 
 	bearer, ok := bearerToken(authzHeader)
@@ -24,6 +35,20 @@ func (ac *AccessControl) Authenticate(ctx context.Context, authzHeader string) (
 	}
 
 	return ac.authenticate(ctx, bearer)
+}
+
+func checkWhiteList(rpcMethod string, whitelist []string) (isWhitelisted bool) {
+	for _, pattern := range whitelist {
+		ok, err := path.Match(pattern, rpcMethod)
+		if err != nil {
+			panic("stdauthnfx: match whitelist: " + err.Error())
+		}
+
+		if ok {
+			return true
+		}
+	}
+	return false
 }
 
 // authenticate a bearer token.

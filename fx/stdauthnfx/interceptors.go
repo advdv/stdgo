@@ -27,7 +27,7 @@ func (ac *AccessControl) GRPCInterceptor() grpc.UnaryServerInterceptor {
 			}
 		}
 
-		if ctx, err = ac.Authenticate(ctx, authzValue); err != nil {
+		if ctx, err = ac.Authenticate(ctx, info.FullMethod, authzValue); err != nil {
 			stdctx.Log(ctx).Info("failed to authenticate GRPC", zap.Error(err))
 			return nil, status.Error(codes.Unauthenticated, "failed to authenticate")
 		}
@@ -39,7 +39,7 @@ func (ac *AccessControl) GRPCInterceptor() grpc.UnaryServerInterceptor {
 func (ac *AccessControl) CRPCInterceptor() connect.Interceptor {
 	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (_ connect.AnyResponse, err error) {
-			if ctx, err = ac.Authenticate(ctx, req.Header().Get("Authorization")); err != nil {
+			if ctx, err = ac.Authenticate(ctx, req.Spec().Procedure, req.Header().Get("Authorization")); err != nil {
 				stdctx.Log(ctx).Info("failed to authenticate CRPC", zap.Error(err))
 				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("failed to authenticate"))
 			}
