@@ -16,20 +16,33 @@ import (
 // region is provided.
 func RegionAcronym(region string) string {
 	switch region {
+	// US
 	case "us-east-1":
 		return "iad" // US East (N. Virginia)
 	case "us-west-1":
 		return "sfo" // US West (N. California)
 	case "us-west-2":
 		return "pdx" // US West (Oregon)
+
+	// Europe
 	case "eu-central-1":
 		return "fra" // EU (Frankfurt)
+	case "eu-central-2":
+		return "zrh" // EU (Zurich)
 	case "eu-west-1":
-		return "dub" // EU (Ireland)
+		return "dub" // EU (Dublin, Ireland)
 	case "eu-west-2":
 		return "lhr" // EU (London)
 	case "eu-west-3":
 		return "cdg" // EU (Paris)
+	case "eu-north-1":
+		return "arn" // EU (Stockholm)
+	case "eu-south-1":
+		return "mxp" // EU (Milan)
+	case "eu-south-2":
+		return "mad" // EU (Madrid, Spain)
+
+	// APAC
 	case "ap-southeast-1":
 		return "sin" // Asia Pacific (Singapore)
 	case "ap-southeast-2":
@@ -40,6 +53,8 @@ func RegionAcronym(region string) string {
 		return "icn" // Asia Pacific (Seoul)
 	case "ap-south-1":
 		return "bom" // Asia Pacific (Mumbai)
+
+	// Americas, Middle East, Africa
 	case "sa-east-1":
 		return "gru" // South America (São Paulo)
 	case "ca-central-1":
