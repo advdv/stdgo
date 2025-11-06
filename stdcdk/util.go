@@ -19,6 +19,8 @@ func RegionAcronym(region string) string {
 	// US
 	case "us-east-1":
 		return "iad" // US East (N. Virginia)
+	case "us-east-2":
+		return "cmh" // US East (Ohio)
 	case "us-west-1":
 		return "sfo" // US West (N. California)
 	case "us-west-2":
