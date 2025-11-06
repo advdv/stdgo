@@ -14,15 +14,11 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
-var (
-	devEnv      = "dev"
-	_runPkgPath = ""
-)
+var devEnv = "dev"
 
 // Init inits the mage targets. The weird signature is to make Mage ignore this when importing.
-func Init(dotEnvDevEnv string, runPkgPath string, _ ...[]string) {
+func Init(dotEnvDevEnv string, _ ...[]string) {
 	devEnv = dotEnvDevEnv
-	_runPkgPath = runPkgPath
 
 	stdmage.MustBeInRootIfNotTest()
 }
