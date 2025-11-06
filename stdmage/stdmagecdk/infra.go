@@ -173,7 +173,9 @@ func LiveContextParams() error {
 	contextPath := filepath.Join(cdkMainDirectory, "cdk.context.json")
 
 	data, err := os.ReadFile(contextPath)
-	if err != nil {
+	if err != nil && os.IsNotExist(err) {
+		return nil // no context, nothing to make live.
+	} else if err != nil {
 		return fmt.Errorf("failed to read context file: %w", err)
 	}
 
