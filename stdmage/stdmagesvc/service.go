@@ -243,6 +243,18 @@ func DeployAll() error {
 	return nil
 }
 
+// Exec allows executing a command inside the task of a service.
+func Exec(taskID, command string) error {
+	return sh.Run(
+		"aws", "ecs", "execute-command",
+		"--cluster", _ecsClusterName,
+		"--task", taskID,
+		"--container", "main",
+		"--command", command,
+		"--interactive",
+	)
+}
+
 // Service describes service information.
 type Service struct {
 	RepositoryName string
