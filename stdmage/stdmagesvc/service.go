@@ -243,13 +243,18 @@ func DeployAll() error {
 	return nil
 }
 
-// Exec allows executing a command inside the task of a service.
+// Exec allows executing a toolbox command inside the task of a service.
 func Exec(taskID, command string) error {
+	return ExecContainer(taskID, "toolbox", command)
+}
+
+// ExecContainer allows executing inside a container on AWS ECS.
+func ExecContainer(taskID, containerName, command string) error {
 	return sh.Run(
 		"aws", "ecs", "execute-command",
 		"--cluster", _ecsClusterName,
 		"--task", taskID,
-		"--container", "main",
+		"--container", "toolbox",
 		"--command", command,
 		"--interactive",
 	)
