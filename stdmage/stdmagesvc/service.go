@@ -284,6 +284,8 @@ func ExecCommandInTask(deploymentIdent, command, containerName string, taskIdx i
 	// forward signals like ctrl+c. So whenever it's used, mage cancels instead.
 	fmt.Fprintln(os.Stdout, strings.Join([]string{
 		"aws", "ecs", "execute-command",
+		"--profile", _awsProfile,
+		"--region", _awsRegion,
 		"--cluster", _ecsClusterName,
 		"--task", tasks.TaskArns[taskIdx],
 		"--container", containerName,
