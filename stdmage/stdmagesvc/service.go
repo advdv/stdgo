@@ -280,14 +280,18 @@ func ExecCommandInTask(deploymentIdent, command, containerName string, taskIdx i
 		return fmt.Errorf("no running tasks found")
 	}
 
-	return sh.Run(
+	// NOTE: instead of executing the actual command we return the command in stdout. This is because we can't reliably
+	// forward signals like ctrl+c. So whenever it's used, mage cancels instead.
+	fmt.Fprintln(os.Stdout, strings.Join([]string{
 		"aws", "ecs", "execute-command",
 		"--cluster", _ecsClusterName,
 		"--task", tasks.TaskArns[taskIdx],
 		"--container", containerName,
 		"--command", command,
 		"--interactive",
-	)
+	}, " "))
+
+	return nil
 }
 
 // ExecCommandIn executes a command in the first task of a given deployment's service.
