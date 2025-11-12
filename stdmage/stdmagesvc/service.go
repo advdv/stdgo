@@ -243,21 +243,66 @@ func DeployAll() error {
 	return nil
 }
 
-// Exec allows executing a toolbox command inside the task of a service.
-func Exec(taskID, command string) error {
-	return ExecContainer(taskID, "toolbox", command)
-}
+// ExecCommandInTask executes a command in the task of a given deployment.
+func ExecCommandInTask(deploymentIdent, command, containerName string, taskIdx int) error {
+	if err := checkDeploymentIdents(deploymentIdent); err != nil {
+		return err
+	}
 
-// ExecContainer allows executing inside a container on AWS ECS.
-func ExecContainer(taskID, containerName, command string) error {
+	service, err := readServiceInfo(deploymentIdent)
+	if err != nil {
+		return fmt.Errorf("read service info: %w", err)
+	}
+
+	exportData, err := sh.Output("aws", "ecs", "list-tasks",
+		"--region", _awsRegion,
+		"--profile", _awsProfile,
+
+		"--cluster", _ecsClusterName,
+		"--service-name", service.ServiceName,
+		"--desired-status", "RUNNING",
+		"--no-cli-pager",
+	)
+	if err != nil {
+		return fmt.Errorf("list tasks: %w", err)
+	}
+
+	type shape struct {
+		TaskArns []string
+	}
+
+	var tasks shape
+	if err := json.Unmarshal([]byte(exportData), &tasks); err != nil {
+		return fmt.Errorf("unmarshal task data: %w", err)
+	}
+
+	if len(tasks.TaskArns) < 1 {
+		return fmt.Errorf("no running tasks found")
+	}
+
 	return sh.Run(
 		"aws", "ecs", "execute-command",
 		"--cluster", _ecsClusterName,
-		"--task", taskID,
-		"--container", "toolbox",
+		"--task", tasks.TaskArns[taskIdx],
+		"--container", containerName,
 		"--command", command,
 		"--interactive",
 	)
+}
+
+// ExecCommandIn executes a command in the first task of a given deployment's service.
+func ExecCommandIn(deploymentIdent, command, containerName string) error {
+	return ExecCommandInTask(deploymentIdent, command, containerName, 0)
+}
+
+// ExecCommand executes a command in the first task of a given deployment's service's toolbox container.
+func ExecCommand(deploymentIdent, command string) error {
+	return ExecCommandInTask(deploymentIdent, command, "toolbox", 0)
+}
+
+// Exec executes 'sh' in the first task of a given deployment's service's toolbox container.
+func Exec(deploymentIdent string) error {
+	return ExecCommandInTask(deploymentIdent, "sh", "toolbox", 0)
 }
 
 // Service describes service information.
