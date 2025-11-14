@@ -18,7 +18,6 @@ var (
 	_registry           string
 	_stackName          string
 	_exportPrefix       string
-	_serviceIdent       string
 	_composeProjectName string
 	_dockerImagePrefix  string
 	_ecsClusterName     string
@@ -32,7 +31,6 @@ func Init(
 	registry string,
 	stackName string,
 	exportPrefix string,
-	serviceIdent string,
 	composeProbjectName string,
 	dockerImagePrefix string,
 	ecsClusterName string,
@@ -44,7 +42,6 @@ func Init(
 	_registry = registry
 	_stackName = stackName
 	_exportPrefix = exportPrefix
-	_serviceIdent = serviceIdent
 	_composeProjectName = composeProbjectName
 	_dockerImagePrefix = dockerImagePrefix
 	_ecsClusterName = ecsClusterName
@@ -77,11 +74,11 @@ func Build() error {
 }
 
 // Push push the last build container to the registry.
-func Push(deploymentIdent string) error {
-	return push(deploymentIdent, true)
+func Push(deploymentIdent, serviceIdent string) error {
+	return push(deploymentIdent, serviceIdent, true)
 }
 
-func push(deploymentIdent string, doLogin bool) error {
+func push(deploymentIdent, serviceIdent string, doLogin bool) error {
 	if err := checkDeploymentIdents(deploymentIdent); err != nil {
 		return err
 	}
@@ -94,14 +91,14 @@ func push(deploymentIdent string, doLogin bool) error {
 	}
 
 	// read the service info.
-	service, err := readServiceInfo(deploymentIdent)
+	service, err := readServiceInfo(deploymentIdent, serviceIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
 	}
 
 	{
 		// main image retagging and push
-		mainDockerImageToReTag := fmt.Sprintf("%s-%s%s", _composeProjectName, _dockerImagePrefix, _serviceIdent)
+		mainDockerImageToReTag := fmt.Sprintf("%s-%s%s", _composeProjectName, _dockerImagePrefix, serviceIdent)
 		mainImageFinalTag := fmt.Sprintf("%s/%s:%s", _registry, service.RepositoryName, service.MainImageTag)
 		if err := sh.Run("docker", "tag",
 			mainDockerImageToReTag, mainImageFinalTag); err != nil {
@@ -117,12 +114,12 @@ func push(deploymentIdent string, doLogin bool) error {
 }
 
 // UpdateLambdas will update any lambdas associated with the service.
-func UpdateLambdas(deploymentIdent string) error {
+func UpdateLambdas(deploymentIdent, serviceIdent string) error {
 	if err := checkDeploymentIdents(deploymentIdent); err != nil {
 		return err
 	}
 
-	service, err := readServiceInfo(deploymentIdent)
+	service, err := readServiceInfo(deploymentIdent, serviceIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
 	}
@@ -151,12 +148,12 @@ func UpdateLambdas(deploymentIdent string) error {
 }
 
 // UpdateService the service by forcing a new deployment and waiting for it to be stable.
-func UpdateService(deploymentIdent string) error {
+func UpdateService(deploymentIdent, serviceIdent string) error {
 	if err := checkDeploymentIdents(deploymentIdent); err != nil {
 		return err
 	}
 
-	service, err := readServiceInfo(deploymentIdent)
+	service, err := readServiceInfo(deploymentIdent, serviceIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
 	}
@@ -184,39 +181,39 @@ func UpdateService(deploymentIdent string) error {
 }
 
 // DeployAllLambdas build and pushes a new docker image, then updates all the lambdas.
-func DeployAllLambdas(deploymentIdent string) error {
-	return deploy(deploymentIdent, true, true, false, true)
+func DeployAllLambdas(deploymentIdent, serviceIdent string) error {
+	return deploy(deploymentIdent, serviceIdent, true, true, false, true)
 }
 
 // DeployService build and pushes a new docker image, then updates just the lambdas.
-func DeployService(deploymentIdent string) error {
-	return deploy(deploymentIdent, true, true, true, false)
+func DeployService(deploymentIdent, serviceIdent string) error {
+	return deploy(deploymentIdent, serviceIdent, true, true, true, false)
 }
 
 // Deploy build and pushes a new docker image, then updates the service.
-func Deploy(deploymentIdent string) error {
-	return deploy(deploymentIdent, true, true, true, true)
+func Deploy(deploymentIdent, serviceIdent string) error {
+	return deploy(deploymentIdent, serviceIdent, true, true, true, true)
 }
 
-func deploy(deploymentIdent string, doBuild, doLogin, updateService, updateLambdas bool) error {
+func deploy(deploymentIdent, serviceIdent string, doBuild, doLogin, updateService, updateLambdas bool) error {
 	if doBuild {
 		if err := Build(); err != nil {
 			return fmt.Errorf("build: %w", err)
 		}
 	}
 
-	if err := push(deploymentIdent, doLogin); err != nil {
+	if err := push(deploymentIdent, serviceIdent, doLogin); err != nil {
 		return fmt.Errorf("push: %w", err)
 	}
 
 	if updateService {
-		if err := UpdateService(deploymentIdent); err != nil {
+		if err := UpdateService(deploymentIdent, serviceIdent); err != nil {
 			return fmt.Errorf("update service: %w", err)
 		}
 	}
 
 	if updateLambdas {
-		if err := UpdateLambdas(deploymentIdent); err != nil {
+		if err := UpdateLambdas(deploymentIdent, serviceIdent); err != nil {
 			return fmt.Errorf("update lambda: %w", err)
 		}
 	}
@@ -225,7 +222,7 @@ func deploy(deploymentIdent string, doBuild, doLogin, updateService, updateLambd
 }
 
 // DeployAll build, pushes and deploys new docker containers for all deployments.
-func DeployAll() error {
+func DeployAll(serviceIdent string) error {
 	if err := Build(); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -235,7 +232,7 @@ func DeployAll() error {
 	}
 
 	if err := rill.ForEach(rill.FromSlice(_deploymentIdents, nil), 5, func(deploymentIdent string) error {
-		return deploy(deploymentIdent, false, false, true, true)
+		return deploy(deploymentIdent, serviceIdent, false, false, true, true)
 	}); err != nil {
 		return fmt.Errorf("for each deployment: %w", err)
 	}
@@ -244,12 +241,12 @@ func DeployAll() error {
 }
 
 // ExecCommandInTask executes a command in the task of a given deployment.
-func ExecCommandInTask(deploymentIdent, command, containerName string, taskIdx int) error {
+func ExecCommandInTask(deploymentIdent, serviceIdent, command, containerName string, taskIdx int) error {
 	if err := checkDeploymentIdents(deploymentIdent); err != nil {
 		return err
 	}
 
-	service, err := readServiceInfo(deploymentIdent)
+	service, err := readServiceInfo(deploymentIdent, serviceIdent)
 	if err != nil {
 		return fmt.Errorf("read service info: %w", err)
 	}
@@ -297,18 +294,18 @@ func ExecCommandInTask(deploymentIdent, command, containerName string, taskIdx i
 }
 
 // ExecCommandIn executes a command in the first task of a given deployment's service.
-func ExecCommandIn(deploymentIdent, command, containerName string) error {
-	return ExecCommandInTask(deploymentIdent, command, containerName, 0)
+func ExecCommandIn(deploymentIdent, serviceIdent, command, containerName string) error {
+	return ExecCommandInTask(deploymentIdent, serviceIdent, command, containerName, 0)
 }
 
 // ExecCommand executes a command in the first task of a given deployment's service's toolbox container.
-func ExecCommand(deploymentIdent, command string) error {
-	return ExecCommandInTask(deploymentIdent, command, "toolbox", 0)
+func ExecCommand(deploymentIdent, serviceIdent, command string) error {
+	return ExecCommandInTask(deploymentIdent, serviceIdent, command, "toolbox", 0)
 }
 
 // Exec executes 'sh' in the first task of a given deployment's service's toolbox container.
-func Exec(deploymentIdent string) error {
-	return ExecCommandInTask(deploymentIdent, "sh", "toolbox", 0)
+func Exec(deploymentIdent, serviceIdent string) error {
+	return ExecCommandInTask(deploymentIdent, serviceIdent, "sh", "toolbox", 0)
 }
 
 // Service describes service information.
@@ -400,7 +397,7 @@ func ReadDeploymentInfo() (Deployments, error) {
 	return deployments, nil
 }
 
-func readServiceInfo(deploymentIndent string) (*Service, error) {
+func readServiceInfo(deploymentIndent, serviceIdent string) (*Service, error) {
 	deployments, err := ReadDeploymentInfo()
 	if err != nil {
 		return nil, fmt.Errorf("read deployment info: %w", err)
@@ -411,9 +408,9 @@ func readServiceInfo(deploymentIndent string) (*Service, error) {
 		return nil, fmt.Errorf("no info about deployment: %s", deploymentIndent)
 	}
 
-	service, ok := deployment.Services[_serviceIdent]
+	service, ok := deployment.Services[serviceIdent]
 	if !ok {
-		return nil, fmt.Errorf("no info about service: %s", _serviceIdent)
+		return nil, fmt.Errorf("no info about service: %s", serviceIdent)
 	}
 
 	return service, nil
