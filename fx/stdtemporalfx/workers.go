@@ -124,6 +124,8 @@ func (w *Workers) Start(context.Context) error {
 			return fmt.Errorf("start worker: %w", err)
 		}
 
+		logs.Info("registered worker", zap.String("queue_name", registration.queueName))
+
 		w.workers = append(w.workers, worker)
 	}
 	return nil
