@@ -27,6 +27,40 @@ func ProvideRegistration[W, A any](
 	)
 }
 
+func ProvideActivityRegistration[A any](
+	queueName string,
+	regFn func(worker worker.Worker, act A),
+) fx.Option {
+	return fx.Options(
+		// provide a registration to be put into the registrations group.
+		fx.Provide(fx.Annotate(func(act A) *Registration {
+			return &Registration{
+				queueName: queueName,
+				regFn: func(w worker.Worker) {
+					regFn(w, act)
+				},
+			}
+		}, fx.ResultTags(`group:"registrations"`))),
+	)
+}
+
+func ProvideWorkflowRegistration[W any](
+	queueName string,
+	regFn func(worker worker.Worker, wf W),
+) fx.Option {
+	return fx.Options(
+		// provide a registration to be put into the registrations group.
+		fx.Provide(fx.Annotate(func(wf W) *Registration {
+			return &Registration{
+				queueName: queueName,
+				regFn: func(w worker.Worker) {
+					regFn(w, wf)
+				},
+			}
+		}, fx.ResultTags(`group:"registrations"`))),
+	)
+}
+
 // Registration describes registering of workflow and activities with a worker.
 type Registration struct {
 	regFn     func(w worker.Worker)
@@ -76,6 +110,7 @@ func NewWorkers(par struct {
 func (w *Workers) Start(context.Context) error {
 	for _, registration := range w.registrations {
 		logs := w.logs.Named(registration.queueName)
+
 		worker := worker.New(w.temporal.c, registration.queueName, worker.Options{
 			OnFatalError: func(err error) {
 				logs.Error("fatal worker error", zap.Error(err))
