@@ -61,6 +61,14 @@ func ProvideWorkflowRegistration[W any](
 	)
 }
 
+// NewRegistration inits a registration.
+func NewRegistration(queueName string, regFn func(worker worker.Worker)) *Registration {
+	return &Registration{
+		queueName: queueName,
+		regFn:     regFn,
+	}
+}
+
 // Registration describes registering of workflow and activities with a worker.
 type Registration struct {
 	regFn     func(w worker.Worker)
@@ -106,28 +114,37 @@ func NewWorkers(par struct {
 	return w, nil
 }
 
+// Register registeres a Temporal worker for the registration.
+func (w *Workers) Register(registration *Registration) error {
+	logs := w.logs.Named(registration.queueName)
+
+	worker := worker.New(w.temporal.c, registration.queueName, worker.Options{
+		OnFatalError: func(err error) {
+			logs.Error("fatal worker error", zap.Error(err))
+		},
+		Interceptors: w.interceptors,
+	})
+
+	registration.regFn(worker)
+
+	if err := worker.Start(); err != nil {
+		return fmt.Errorf("start worker: %w", err)
+	}
+
+	logs.Info("registered worker", zap.String("queue_name", registration.queueName))
+
+	w.workers = append(w.workers, worker)
+	return nil
+}
+
 // Start the registered workers.
 func (w *Workers) Start(context.Context) error {
 	for _, registration := range w.registrations {
-		logs := w.logs.Named(registration.queueName)
-
-		worker := worker.New(w.temporal.c, registration.queueName, worker.Options{
-			OnFatalError: func(err error) {
-				logs.Error("fatal worker error", zap.Error(err))
-			},
-			Interceptors: w.interceptors,
-		})
-
-		registration.regFn(worker)
-
-		if err := worker.Start(); err != nil {
-			return fmt.Errorf("start worker: %w", err)
+		if err := w.Register(registration); err != nil {
+			return fmt.Errorf("register: %w", err)
 		}
-
-		logs.Info("registered worker", zap.String("queue_name", registration.queueName))
-
-		w.workers = append(w.workers, worker)
 	}
+
 	return nil
 }
 
