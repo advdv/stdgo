@@ -131,7 +131,9 @@ func (w *Workers) Register(registration *Registration) error {
 		return fmt.Errorf("start worker: %w", err)
 	}
 
-	logs.Info("registered worker", zap.String("queue_name", registration.queueName))
+	logs.Info("registered worker",
+		zap.String("queue_name", registration.queueName),
+		zap.Int("num_interceptors", len(w.interceptors)))
 
 	w.workers = append(w.workers, worker)
 	return nil
