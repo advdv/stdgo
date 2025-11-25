@@ -296,14 +296,13 @@ func cdk(env, qual string, args ...string) error {
 
 	// setup qualifier settings so we isolate our bootstrap between projects.
 	args = append([]string{
-		"cdk",
 		"--toolkit-stack-name", qual + "Bootstrap",
 		"--context", "qualifier=" + qual,
 		"--context", "environment=" + env,
 		"--qualifier", strings.ToLower(qual),
 	}, args...)
 
-	if err := sh.Run("npx", args...); err != nil {
+	if err := sh.Run("cdk", args...); err != nil {
 		return fmt.Errorf("failed to run: %w", err)
 	}
 
