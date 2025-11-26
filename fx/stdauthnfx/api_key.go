@@ -66,7 +66,7 @@ func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) 
 
 	tok, err := jwt.ParseString(string(apiKeyb), opts...)
 	if err != nil {
-		return ctx, errors.Errorf("invalid token")
+		return ctx, errors.Errorf("invalid token: %w", err)
 	}
 
 	var b64Data string
