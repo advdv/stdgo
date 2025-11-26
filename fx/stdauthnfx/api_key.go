@@ -56,7 +56,7 @@ func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) 
 	noSuffixAPIKey := strings.TrimPrefix(apiKey, APIKeyPrefix)
 	apiKeyb, err := base62.StdEncoding.DecodeString(noSuffixAPIKey)
 	if err != nil {
-		return nil, errors.Errorf("decode api key: %w", err)
+		return ctx, errors.Errorf("decode api key: %w", err)
 	}
 
 	opts := []jwt.ParseOption{
@@ -66,22 +66,22 @@ func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) 
 
 	tok, err := jwt.ParseString(string(apiKeyb), opts...)
 	if err != nil {
-		return nil, errors.Errorf("invalid token")
+		return ctx, errors.Errorf("invalid token")
 	}
 
 	var b64Data string
 	if err := tok.Get("access", &b64Data); err != nil {
-		return nil, errors.Errorf("get access data from token: %w", err)
+		return ctx, errors.Errorf("get access data from token: %w", err)
 	}
 
 	data, err := base64.StdEncoding.DecodeString(b64Data)
 	if err != nil {
-		return nil, errors.Errorf("base64-decode access data: %w", err)
+		return ctx, errors.Errorf("base64-decode access data: %w", err)
 	}
 
 	var acc stdauthnfxv1.Access
 	if err := proto.Unmarshal(data, &acc); err != nil {
-		return nil, errors.Errorf("unmarshal access: %w", err)
+		return ctx, errors.Errorf("unmarshal access: %w", err)
 	}
 
 	ctx = WithAPIKeyFingerprint(ctx, ac.hasher(), []byte(apiKey))

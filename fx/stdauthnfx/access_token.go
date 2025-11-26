@@ -34,7 +34,7 @@ func (ac *AccessControl) authenticateAccessToken(
 
 	sub, ok := token.Subject()
 	if !ok {
-		return nil, errors.Errorf("no sub claim: %w", err)
+		return ctx, errors.Errorf("no sub claim: %w", err)
 	}
 
 	stdctx.Log(ctx).Info("authenticated", zap.String("subject", sub))
