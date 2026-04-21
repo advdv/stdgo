@@ -18,16 +18,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// Config configures the heartbeat worker.
 type Config struct{}
 
 type (
+	// Params are the dependencies for the heartbeat worker.
 	Params struct {
 		fx.In
 		Config
+
 		RW        *stdtx.Transactor[pgx.Tx] `name:"rw"`
 		Validator protovalidate.Validator
 	}
 
+	// Result is the output of the heartbeat worker.
 	Result struct {
 		fx.Out
 		Worker    river.Worker[*workheartbeatv1.Args]
@@ -41,9 +45,11 @@ type worker struct {
 	*stdriverfx.TransactWorker[*workheartbeatv1.Args, *workheartbeatv1.Output]
 }
 
+// New creates a new heartbeat worker.
 func New(par Params) (Result, error) {
 	res := &worker{}
 	res.TransactWorker = stdriverfx.NewTransactWorker(par.RW, par.Validator, res.work)
+
 	return Result{Worker: res, Periodics: res}, nil
 }
 
@@ -67,6 +73,7 @@ func (w worker) work(
 	defer stdriverfx.Log(ctx).Info("done with heartbeat job")
 
 	tStart := time.Now()
+
 	select {
 	case <-time.After(job.Args.GetBlockFor().AsDuration()):
 	case <-ctx.Done():

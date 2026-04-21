@@ -44,6 +44,7 @@ func TestNoticeLogging(t *testing.T) {
 	ctx, shared := setup(t)
 
 	var db *sql.DB
+
 	var obs *observer.ObservedLogs
 
 	app := fxtest.New(t, shared, stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"), fx.Populate(&db, &obs))
@@ -70,7 +71,9 @@ func TestIamAuth(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "B")
 
 	var db *sql.DB
+
 	var pcfg *pgxpool.Config
+
 	var obs *observer.ObservedLogs
 	app := fxtest.New(t,
 		stdawsfx.Provide(),
@@ -106,6 +109,7 @@ func TestProvideWithDeriver(t *testing.T) {
 	}
 
 	var deriver0Name string
+
 	var deriver1Name string
 
 	app := fxtest.New(t, shared,
@@ -212,7 +216,9 @@ func TestProvidePgxPoolTestWithMigrator(t *testing.T) {
 
 	var db1DerivedUser string
 	var db1DerivedPassword string
+
 	var db0DerivedUser string
+
 	var db0DerivedPassword string
 
 	mig := goosemigrator.New(filepath.Join("testdata", "migrations1"))

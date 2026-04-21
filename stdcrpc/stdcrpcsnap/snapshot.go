@@ -43,6 +43,7 @@ func ResponseSnapshotEq[O any](
 	tb testing.TB, resp *connect.Response[O], err error, actOverwrites ...Overwrite,
 ) {
 	var connErr *connect.Error
+
 	var actMsg []byte
 
 	if errors.As(err, &connErr) {
@@ -71,6 +72,7 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 	actMsg = ApplyOverwrite(tb, actMsg, actOverwrites...)
 
 	expFilePath := filepath.Join("testdata", tb.Name()+".json")
+
 	expMsg, err := os.ReadFile(expFilePath)
 	if os.IsNotExist(err) {
 		// in case the expected message json is not found, we assume it is a new test case so we write
@@ -91,7 +93,9 @@ func SnapshotEq(tb testing.TB, actMsg []byte, actOverwrites ...Overwrite) {
 
 func formatJSONData(data []byte) (string, error) {
 	var dst bytes.Buffer
-	if err := json.Indent(&dst, data, "", " "); err != nil {
+
+	err := json.Indent(&dst, data, "", " ")
+	if err != nil {
 		return "", fmt.Errorf("indent json data: %w", err)
 	}
 

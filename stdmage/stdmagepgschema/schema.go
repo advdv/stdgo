@@ -88,6 +88,7 @@ func Snapshot(ctx context.Context) error {
 
 	// run pg_dump to sql representation
 	ccfg := stdlo.Must1(pgx.ParseConfig(os.Getenv(urlEnv)))
+
 	stdlo.Must0(os.MkdirAll(filepath.Join("migrations", "snapshot"), 0o744))
 	if err := sh.Run("docker", "run",
 		"--rm", "--network", "host",

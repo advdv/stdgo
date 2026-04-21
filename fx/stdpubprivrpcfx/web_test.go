@@ -2,6 +2,7 @@ package stdpubprivrpcfx_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,7 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const testRpcBasePath = "/xr"
+const testRPCBasePath = "/xr"
 
 func TestSetup(t *testing.T) {
 	t.Parallel()
@@ -35,13 +36,13 @@ func TestRPCMounts(t *testing.T) {
 	ctx, pubh, privh, _, _, _ := setupAll(t)
 
 	req, resp := httptest.NewRequestWithContext(
-		ctx, http.MethodGet, testRpcBasePath+foov1connect.ReadOnlyServiceWhoAmIProcedure, nil),
+		ctx, http.MethodGet, testRPCBasePath+foov1connect.ReadOnlyServiceWhoAmIProcedure, nil),
 		httptest.NewRecorder()
 	pubh.ServeHTTP(resp, req)
 	require.Equal(t, 405, resp.Code)
 
 	req, resp = httptest.NewRequestWithContext(
-		ctx, http.MethodGet, testRpcBasePath+foov1connect.SystemServiceInitOrganizationProcedure, nil),
+		ctx, http.MethodGet, testRPCBasePath+foov1connect.SystemServiceInitOrganizationProcedure, nil),
 		httptest.NewRecorder()
 	privh.ServeHTTP(resp, req)
 	require.Equal(t, 405, resp.Code)
@@ -50,9 +51,9 @@ func TestRPCMounts(t *testing.T) {
 func TestHealthz(t *testing.T) {
 	t.Parallel()
 	var obs *observer.ObservedLogs
-	_, pubh, privh, _, _, _ := setupAll(t, &obs)
+	ctx, pubh, privh, _, _, _ := setupAll(t, &obs)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil)
 	req.Header.Set("X-Request-Id", "2201419daf154fb4acd2000000000009")
 	pubh.ServeHTTP(rec, req)
 
@@ -65,7 +66,7 @@ func TestHealthz(t *testing.T) {
 
 	require.Equal(t, "2201419daf154fb4acd2000000000009", logEntries[0].ContextMap()["request_id"])
 
-	rec, req = httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec, req = httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil)
 	privh.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 }
@@ -73,9 +74,9 @@ func TestHealthz(t *testing.T) {
 func TestHealthzFail(t *testing.T) {
 	t.Parallel()
 	var obs *observer.ObservedLogs
-	_, pubh, _, _, _, _ := setupAll(t, &obs)
+	ctx, pubh, _, _, _, _ := setupAll(t, &obs)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz?failhc=true", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz?failhc=true", nil)
 	pubh.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusPreconditionFailed, rec.Code)
 }
@@ -83,9 +84,9 @@ func TestHealthzFail(t *testing.T) {
 func TestHealthzPanic(t *testing.T) {
 	t.Parallel()
 	var obs *observer.ObservedLogs
-	_, pubh, _, _, _, _ := setupAll(t, &obs)
+	ctx, pubh, _, _, _, _ := setupAll(t, &obs)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz?force_panic=true", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz?force_panic=true", nil)
 	req.Header.Set("X-Request-Id", "2201419daf154fb4acd2000000000009")
 	pubh.ServeHTTP(rec, req)
 
@@ -163,7 +164,7 @@ func TestLambdaRelayin(t *testing.T) {
 			httptest.NewRequestWithContext(ctx, http.MethodGet, "/lambda/foo-relay-1", nil)
 		privh.ServeHTTP(resp, req)
 		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
-		require.Equal(t, `{"message":"Bad Request: no request body"}`+"\n", resp.Body.String())
+		require.JSONEq(t, `{"message":"Bad Request: no request body"}`, resp.Body.String())
 	})
 }
 
@@ -172,7 +173,7 @@ func TestOpenApi(t *testing.T) {
 	var obs *observer.ObservedLogs
 	_, pubh, _, _, _, _ := setupAll(t, &obs)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, testRpcBasePath+"/o/docs", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodGet, testRPCBasePath+"/o/docs", nil)
 	pubh.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
 }
@@ -182,7 +183,7 @@ func TestOpenApiSpec(t *testing.T) {
 	var obs *observer.ObservedLogs
 	_, pubh, _, _, _, _ := setupAll(t, &obs)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, testRpcBasePath+"/o/openapi-3.0.json", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodGet, testRPCBasePath+"/o/openapi-3.0.json", nil)
 	pubh.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
 

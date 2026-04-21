@@ -50,7 +50,7 @@ func New(params Params) (Result, error) {
 		opts = append(opts, stdtxpgxv5.OnTxCommit(params.OnCommitTxHook))
 	}
 
-	if params.Config.TestMaxQueryCosts > 0 {
+	if params.TestMaxQueryCosts > 0 {
 		opts = append(opts,
 			stdtxpgxv5.TestForMaxQueryPlanCosts(params.TestMaxQueryCosts),
 			stdtxpgxv5.DiscourageSeqScan(true),

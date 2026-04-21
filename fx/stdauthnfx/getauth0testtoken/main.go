@@ -1,4 +1,4 @@
-//nolint:forbidigo,noctx,lll,gocritic,gosec,depguard
+//nolint:forbidigo,noctx,lll,gosec
 package main
 
 // NOTE: everything below is written by AI.
@@ -24,9 +24,9 @@ import (
 
 // ==== EDIT THESE THREE VALUES ====.
 const (
-	AUTH0_DOMAIN   = "id-dev.sterndesk.com"
-	AUTH0_CLIENTID = "j9kQOGUCuZnwZiT9LMSz7oTI4JlMu9OU"
-	AUTH0_AUDIENCE = "basewarp-recode-api"
+	auth0Domain   = "id-dev.sterndesk.com"
+	auth0ClientID = "j9kQOGUCuZnwZiT9LMSz7oTI4JlMu9OU"
+	auth0Audience = "basewarp-recode-api"
 )
 
 // Fixed callback (must match Auth0 Allowed Callback URLs).
@@ -62,17 +62,17 @@ func randomState() (string, error) {
 func openInBrowser(url string) { _ = exec.Command("open", url).Start() } // macOS
 
 func main() {
-	if AUTH0_DOMAIN == "" || AUTH0_CLIENTID == "" {
-		log.Fatal("Please set AUTH0_DOMAIN and AUTH0_CLIENTID constants at the top of main.go")
+	if auth0Domain == "" || auth0ClientID == "" {
+		log.Fatal("Please set auth0Domain and auth0ClientID constants at the top of main.go")
 	}
 
 	// 1) Prepare OAuth2 (Auth0) with fixed redirect
 	endpoint := oauth2.Endpoint{
-		AuthURL:  "https://" + AUTH0_DOMAIN + "/authorize",
-		TokenURL: "https://" + AUTH0_DOMAIN + "/oauth/token",
+		AuthURL:  "https://" + auth0Domain + "/authorize",
+		TokenURL: "https://" + auth0Domain + "/oauth/token",
 	}
 	oauthCfg := &oauth2.Config{
-		ClientID:    AUTH0_CLIENTID,
+		ClientID:    auth0ClientID,
 		RedirectURL: redirectURI,
 		Scopes:      strings.Split(defaultScope, " "),
 		Endpoint:    endpoint,
@@ -96,8 +96,8 @@ func main() {
 		oauth2.SetAuthURLParam("prompt", "login select_account"),
 		oauth2.SetAuthURLParam("response_mode", "query"),
 	)
-	if AUTH0_AUDIENCE != "" {
-		opts = append(opts, oauth2.SetAuthURLParam("audience", AUTH0_AUDIENCE))
+	if auth0Audience != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("audience", auth0Audience))
 	}
 	authURL := oauthCfg.AuthCodeURL(state, opts...)
 
@@ -108,30 +108,38 @@ func main() {
 	errCh := make(chan error, 1)
 
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q := r.URL.Query() //nolint:varnamelen // q is conventional for query params
 		if errStr := q.Get("error"); errStr != "" {
 			desc := q.Get("error_description")
 			errCh <- fmt.Errorf("authorization error: %s (%s)", errStr, desc)
+
 			http.Error(w, "Authorization failed. You can close this window.", http.StatusBadRequest)
+
 			return
 		}
+
 		if q.Get("state") != state {
 			errCh <- errors.New("state mismatch")
+
 			http.Error(w, "State mismatch. You can close this window.", http.StatusBadRequest)
+
 			return
 		}
+
 		code := q.Get("code")
 		if code == "" {
 			errCh <- errors.New("missing authorization code")
+
 			http.Error(w, "Missing code. You can close this window.", http.StatusBadRequest)
 			return
 		}
 		_, _ = w.Write([]byte("<html><body><h2>Auth complete ✅</h2><p>You can close this window and return to the terminal.</p></body></html>"))
+
 		codeCh <- code
 	})
 
 	// A friendly root page (optional)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("<html><body><p>This helper is running. Use your terminal to start the Auth0 flow.</p></body></html>"))
 	})
 
@@ -142,17 +150,18 @@ func main() {
 	}
 
 	// Verify port availability early to give a clear error
-	if ln, err := net.Listen("tcp", serverAddress); err != nil {
+	ln, err := net.Listen("tcp", serverAddress)
+	if err != nil {
 		log.Fatalf("Port %s is in use. Close the app using it or change the code to another port.\nError: %v", serverAddress, err)
-	} else {
-		_ = ln.Close()
 	}
+	_ = ln.Close()
 
 	go func() {
 		if serveErr := server.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			errCh <- serveErr
 		}
 	}()
+
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -171,9 +180,13 @@ func main() {
 	select {
 	case authorizationCode = <-codeCh:
 	case e := <-errCh:
-		log.Fatalf("authorization failed: %v", e)
+		log.Printf("authorization failed: %v", e)
+
+		return
 	case <-time.After(10 * time.Minute):
-		log.Fatal("timed out waiting for authorization (10m)")
+		log.Print("timed out waiting for authorization (10m)")
+
+		return
 	}
 
 	// 7) Exchange code (with PKCE verifier)
@@ -186,12 +199,16 @@ func main() {
 		oauth2.SetAuthURLParam("code_verifier", verifier),
 	)
 	if err != nil {
-		log.Fatalf("token exchange failed: %v", err)
+		log.Printf("token exchange failed: %v", err)
+
+		return
 	}
 
 	// 8) Persist tokens
 	if err := os.WriteFile(tokenFile, []byte(token.AccessToken), 0o600); err != nil {
-		log.Fatalf("failed writing %s: %v", tokenFile, err)
+		log.Printf("failed writing %s: %v", tokenFile, err)
+
+		return
 	}
 
 	type tokenDump struct {
@@ -210,7 +227,9 @@ func main() {
 	}
 	if b, marshalErr := json.MarshalIndent(dump, "", "  "); marshalErr == nil {
 		if err := os.WriteFile(tokenJSON, b, 0o600); err != nil {
-			log.Fatalf("failed writing %s: %v", tokenJSON, err)
+			log.Printf("failed writing %s: %v", tokenJSON, err)
+
+			return
 		}
 	}
 

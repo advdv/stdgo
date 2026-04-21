@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// GRPCInterceptor returns a gRPC unary server interceptor that authenticates requests.
 func (ac *AccessControl) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -21,6 +22,7 @@ func (ac *AccessControl) GRPCInterceptor() grpc.UnaryServerInterceptor {
 		next grpc.UnaryHandler,
 	) (resp any, err error) {
 		var authzValue string
+
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
 			if vals := md.Get("authorization"); len(vals) > 0 {
 				authzValue = vals[0]
@@ -36,6 +38,7 @@ func (ac *AccessControl) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
+// CRPCInterceptor returns a Connect interceptor that authenticates requests.
 func (ac *AccessControl) CRPCInterceptor() connect.Interceptor {
 	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (_ connect.AnyResponse, err error) {

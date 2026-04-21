@@ -57,7 +57,7 @@ func New(params Params) (Result, error) {
 		Logger: zap.New(params.Core),
 	}
 
-	params.Lifecycle.Append(fx.Hook{
+	params.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			_ = res.Logger.Sync() // ignore to support TTY: https://github.com/uber-go/zap/issues/880
 

@@ -27,6 +27,7 @@ func (d *standardDriver) NewPool(pcfg *pgxpool.Config) (*sql.DB, error) {
 	}
 
 	db := stdlib.OpenDB(*pcfg.ConnConfig, opts...)
+
 	return db, nil
 }
 
@@ -44,6 +45,7 @@ func (d *pgxv5Driver) NewPool(pcfg *pgxpool.Config) (*pgxpool.Pool, error) {
 	defer cancel()
 
 	db, err := pgxpool.NewWithConfig(ctx, pcfg)
+
 	return db, err
 }
 

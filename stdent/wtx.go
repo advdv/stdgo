@@ -38,21 +38,6 @@ func (tx WTx) Query(ctx context.Context, query string, args, v any) error {
 	return tx.do(ctx, query, args, v, tx.Tx.Query)
 }
 
-// toSQLTx casts to standard sql.Tx.
-func (tx WTx) toSQLTx() (*sql.Tx, error) {
-	entTx, ok := tx.Tx.(*entsql.Tx)
-	if !ok {
-		return nil, fmt.Errorf("WTx does not implement *entgo.io/ent/dialect/sql.Tx")
-	}
-
-	sqlTx, ok := entTx.Conn.ExecQuerier.(*sql.Tx)
-	if !ok {
-		return nil, fmt.Errorf("WTx does not contain *sql.Tx")
-	}
-
-	return sqlTx, nil
-}
-
 // StandardTx returns the sql.Tx instance that this Ent transaction holds. This is useful for
 // code that depends on that interface. It panics if the Ent transaction could not be converted
 // to a *sql.Tx.
@@ -83,6 +68,21 @@ func (tx WTx) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	}
 
 	return sqlTx.ExecContext(ctx, query, args...)
+}
+
+// toSQLTx casts to standard sql.Tx.
+func (tx WTx) toSQLTx() (*sql.Tx, error) {
+	entTx, ok := tx.Tx.(*entsql.Tx)
+	if !ok {
+		return nil, fmt.Errorf("WTx does not implement *entgo.io/ent/dialect/sql.Tx")
+	}
+
+	sqlTx, ok := entTx.ExecQuerier.(*sql.Tx)
+	if !ok {
+		return nil, fmt.Errorf("WTx does not contain *sql.Tx")
+	}
+
+	return sqlTx, nil
 }
 
 func (tx WTx) do(
@@ -132,6 +132,7 @@ func (tx WTx) do(
 	}
 
 	var cumCostOfAllPlans float64
+
 	for i, plan := range expl {
 		stdctx.Log(ctx).Log(tx.execQueryLogLevel, "explained query plan",
 			zap.Int("plan_idx", i),

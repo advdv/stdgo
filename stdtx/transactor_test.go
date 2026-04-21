@@ -56,6 +56,7 @@ func TestBasicWriteTransaction(t *testing.T) {
 	err := stdtx.Transact0(ctx, ro, func(ctx context.Context, tx pgx.Tx) error {
 		require.Equal(t, 1, stdtx.AttemptFromContext(ctx))
 		_, err := tx.Exec(ctx, `INSERT INTO test_table (id, value) VALUES (2, 200);`)
+
 		return err
 	})
 
@@ -147,13 +148,16 @@ func TestAlreadyDoneIsOK(t *testing.T) {
 func TestGoexitRollback(t *testing.T) {
 	ctx, _, rw, _, _, rwDrv := setup(t)
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		stdtx.Transact0(ctx, rw, func(ctx context.Context, _ pgx.Tx) error {
 			runtime.Goexit()
 			return nil
 		})
 	}()
+
 	<-done
 
 	require.Equal(t, int64(1), rwDrv.RollbackCount)
@@ -162,6 +166,7 @@ func TestGoexitRollback(t *testing.T) {
 func TestSerializableFailure(t *testing.T) {
 	ctx, _, rw, _, _, rwDrv := setup(t)
 	start := make(chan struct{})
+
 	var numAttempts int64
 
 	// this work on the transaction creates contention and forces the retry.
@@ -189,13 +194,16 @@ func TestSerializableFailure(t *testing.T) {
 	// setup both transactions, waiting to be executed
 	var wg sync.WaitGroup
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
+
 		assert.NoError(t, stdtx.Transact0(ctx, rw, txWork))
 	}()
 
 	go func() {
 		defer wg.Done()
+
 		assert.NoError(t, stdtx.Transact0(ctx, rw, txWork))
 	}()
 
@@ -253,6 +261,7 @@ func setup(t *testing.T) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Tra
 
 type countingPgxV5Driver struct {
 	stdtx.Driver[pgx.Tx]
+
 	RollbackCount int64
 	CommitCount   int64
 }

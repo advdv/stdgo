@@ -46,6 +46,7 @@ func TestWorkflowExecution(t *testing.T) {
 	t.Parallel()
 
 	var obs *observer.ObservedLogs
+
 	ctx, _, tst := setup(t, &obs)
 	out, err := tst.W.Foo(ctx, internalv1.FooInput_builder{Bar: proto.String("abc")}.Build())
 	require.NoError(t, err)
@@ -92,12 +93,14 @@ func setup(tb testing.TB, other ...any) (
 			*stdtemporalfx.DefaultClientInterceptor
 		}) (res struct {
 			fx.Out
+
 			WorkerInterceptors []interceptor.WorkerInterceptor
 			ClientInterceptors []interceptor.ClientInterceptor
 		},
 		) {
 			res.WorkerInterceptors = append(res.WorkerInterceptors, par.DefaultWorkerInterceptor)
 			res.ClientInterceptors = append(res.ClientInterceptors, par.DefaultClientInterceptor)
+
 			return
 		}),
 
@@ -110,7 +113,7 @@ func setup(tb testing.TB, other ...any) (
 			},
 		),
 
-		// workflows and activiites for testing
+		// workflows and activities for testing
 		fx.Provide(newTestWorkflows),
 		fx.Provide(newTestActivities),
 
@@ -154,7 +157,8 @@ func (fooWorkflow) Execute(ctx workflow.Context) (*internalv1.FooOutput, error) 
 }
 
 func (testWorkflows) Foo(ctx workflow.Context, _ *internalv1.FooWorkflowInput) (internalv1.FooWorkflow, error) {
-	if _, err := internalv1.Bar(ctx, &internalv1.BarInput{}); err != nil {
+	_, err := internalv1.Bar(ctx, &internalv1.BarInput{})
+	if err != nil {
 		return nil, fmt.Errorf("bar: %w", err)
 	}
 

@@ -14,7 +14,9 @@ import (
 
 func TestAtlasDirMirator(t *testing.T) {
 	var actProgram string
+
 	var actArgs []string
+
 	var actDir string
 
 	exec := func(ctx context.Context, stdin io.Reader, dir, program string, args ...string) (string, error) {

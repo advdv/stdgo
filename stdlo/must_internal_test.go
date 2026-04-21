@@ -36,6 +36,7 @@ func TestMust1(t *testing.T) {
 	cb := func() error {
 		return assert.AnError
 	}
+
 	is.PanicsWithValue("operation should fail: assert.AnError general error for testing", func() {
 		Must0(cb(), "operation should fail")
 	})

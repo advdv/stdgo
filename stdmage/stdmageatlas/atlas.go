@@ -170,6 +170,7 @@ func Iterate(name string) error {
 	latestName, latestFilename := getLatestMigrationName()
 
 	fmt.Fprintf(os.Stderr, "latest migration name: '%v' (%s), curr name: '%v'\n", latestName, latestFilename, name)
+
 	if latestName == name {
 		fmt.Fprintf(os.Stderr, "latest migration matches provided name, remove to replace it.")
 
@@ -203,6 +204,7 @@ func Iterate(name string) error {
 // getLatestMigrationName read the migrations directory for the latest migration defined.
 func getLatestMigrationName() (string, string) {
 	var latestName, latestFilename string
+
 	for _, entry := range stdlo.Must1(os.ReadDir(migrationsDir)) {
 		if matched, _ := regexp.MatchString(`([0-9]+)_(.+)\.sql$`, entry.Name()); !matched { //nolint:staticcheck
 			continue

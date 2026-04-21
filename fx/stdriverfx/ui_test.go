@@ -1,6 +1,7 @@
 package stdriverfx_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,11 +12,12 @@ import (
 
 func TestUIServer(t *testing.T) {
 	var uis *riverui.Server
+
 	_, _, _ = setup(t, &uis)
 
 	require.NotNil(t, uis)
 
-	rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/states", nil)
+	rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/states", nil)
 	uis.ServeHTTP(rec, req)
 	require.Equal(t, 200, rec.Result().StatusCode)
 }

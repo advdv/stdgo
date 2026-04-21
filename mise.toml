@@ -1,0 +1,9 @@
+[tools]
+# golangci-lint must be listed before go so it takes precedence on PATH
+# over any binary installed via `go install`
+golangci-lint = "latest"
+go = "latest"
+amp = "latest"
+mage = "latest"
+node = "22"
+buf = "latest"

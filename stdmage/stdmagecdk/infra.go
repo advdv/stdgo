@@ -79,14 +79,16 @@ func Boundary() error {
 	}
 
 	fmt.Fprintf(os.Stderr, "using temporary file: %v", tmpf.Name())
-	if _, err := io.Copy(tmpf, bytes.NewReader(boundaryTemplate)); err != nil {
+
+	_, err = io.Copy(tmpf, bytes.NewReader(boundaryTemplate))
+	if err != nil {
 		return fmt.Errorf("failed to write template to temporary file: %w", err)
 	}
 
 	defer tmpf.Close()
 	defer os.Remove(tmpf.Name())
 
-	if err := sh.Run(
+	err = sh.Run(
 		"aws", "cloudformation", "create-stack",
 		"--no-cli-pager",
 		"--profile", bootstrapProfile,
@@ -94,7 +96,8 @@ func Boundary() error {
 		"--stack-name", "DeveloperPolicy",
 		"--template-body", "file://"+tmpf.Name(),
 		"--capabilities", "CAPABILITY_NAMED_IAM",
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("failed ")
 	}
 
@@ -130,7 +133,8 @@ func Diff(env string) error {
 // DiffStack calculates and shows the diff a specific stack (exclusively).
 func DiffStack(env string, stack string) error {
 	profile, qual := profileFromEnv(env)
-	if err := LiveContextParams(); err != nil {
+	err := LiveContextParams()
+	if err != nil {
 		return fmt.Errorf("failed to setup live SSM parameters: %w", err)
 	}
 
@@ -153,7 +157,9 @@ func Deploy(env string) error {
 // DeployStack deploys a specific stack of our infrastructure (exclusively).
 func DeployStack(env string, stack string) error {
 	profile, qual := profileFromEnv(env)
-	if err := LiveContextParams(); err != nil {
+
+	err := LiveContextParams()
+	if err != nil {
 		return fmt.Errorf("failed to setup live SSM parameters: %w", err)
 	}
 
@@ -187,7 +193,7 @@ func LiveContextParams() error {
 		}
 	}
 
-	if err := os.WriteFile(contextPath, data, 0o600); err != nil {
+	if err := os.WriteFile(contextPath, data, 0o600); err != nil { //nolint:gosec // path is from config, not user input
 		return fmt.Errorf("failed to write updated context: %w", err)
 	}
 
@@ -198,7 +204,8 @@ func LiveContextParams() error {
 func Build() error {
 	const buildDirPerm = 0o0700
 
-	if err := os.MkdirAll(filepath.Join(cdkMainDirectory, "builds"), buildDirPerm); err != nil {
+	err := os.MkdirAll(filepath.Join(cdkMainDirectory, "builds"), buildDirPerm)
+	if err != nil {
 		return fmt.Errorf("failed to create build dir: %w", err)
 	}
 

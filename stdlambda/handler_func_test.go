@@ -16,9 +16,11 @@ import (
 
 func TestJSONHandler(t *testing.T) {
 	type Input struct{ Foo string }
+
 	type Output struct{ Bar string }
 
 	type GWInput = events.APIGatewayProxyRequest
+
 	type GWOutput = events.APIGatewayProxyResponse
 
 	adapt := httpadapter.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -26,6 +26,7 @@ type TestMigratorFunc func(
 	pcfg *pgxpool.Config,
 ) (*pgxpool.Config, error)
 
+// Migrate implements the TestMigrator interface.
 func (f TestMigratorFunc) Migrate(
 	tb testing.TB, cfg Config, pcfg *pgxpool.Config,
 ) (*pgxpool.Config, error) {
@@ -39,6 +40,7 @@ type EndRole struct {
 	Password string
 }
 
+// PgtestdbTestMigratorParams holds the dependencies for creating a pgtestdb test migrator.
 type PgtestdbTestMigratorParams struct {
 	fx.In
 	Migrator pgtestdb.Migrator

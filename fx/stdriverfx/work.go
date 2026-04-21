@@ -72,7 +72,9 @@ type Workers struct {
 func New(par struct {
 	fx.In
 	fx.Lifecycle
+
 	Config
+
 	Logs   *zap.Logger
 	Client Client
 },
@@ -87,7 +89,7 @@ func New(par struct {
 		client: par.Client,
 	}
 
-	par.Lifecycle.Append(fx.Hook{
+	par.Append(fx.Hook{
 		OnStart: res.start,
 		OnStop:  res.stop,
 	})
@@ -100,6 +102,7 @@ func (w Workers) Ping(ctx context.Context) error {
 	if _, err := w.client.JobList(ctx, river.NewJobListParams().First(1)); err != nil {
 		return fmt.Errorf("list worker jobs: %w", err)
 	}
+
 	return nil
 }
 
@@ -141,6 +144,7 @@ func (w Workers) stop(ctx context.Context) error {
 	}
 
 	w.logs.Info("soft stop timed out, issuing hard stop", zap.Duration("hard_stop_timeout", w.cfg.HardStopTimeout))
+
 	hardStopCtx, hardStopCtxCancel := context.WithTimeout(ctx, w.cfg.HardStopTimeout)
 	defer hardStopCtxCancel()
 
@@ -153,6 +157,7 @@ func (w Workers) stop(ctx context.Context) error {
 	}
 
 	w.logs.Info("hard stop succeeded")
+
 	return nil
 }
 

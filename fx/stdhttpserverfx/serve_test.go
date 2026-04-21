@@ -18,6 +18,7 @@ var serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 func TestServeNoName(t *testing.T) {
 	var addr netip.AddrPort
+
 	ctx, app := t.Context(), fx.New(
 
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
@@ -39,6 +40,7 @@ func TestServeNoName(t *testing.T) {
 
 func TestServeNamed(t *testing.T) {
 	var addr netip.AddrPort
+
 	ctx, app := t.Context(), fx.New(
 		fx.Supply(fx.Annotate(serve, fx.ResultTags(`name:"web"`), fx.As(new(http.Handler)))),
 		fx.Populate(fx.Annotate(&addr, fx.ParamTags(`name:"web"`))),
@@ -60,6 +62,7 @@ func TestTwoNamedServes(t *testing.T) {
 
 	var deps struct {
 		fx.In
+
 		AddrA netip.AddrPort `name:"a"`
 		AddrB netip.AddrPort `name:"b"`
 	}
@@ -84,6 +87,8 @@ func TestTwoNamedServes(t *testing.T) {
 func assertStatus(tb testing.TB, addr netip.AddrPort) {
 	resp, err := http.Get(fmt.Sprintf("http://%s", addr.String())) //nolint:noctx
 	require.NoError(tb, err)
+
 	defer resp.Body.Close()
+
 	require.Equal(tb, http.StatusOK, resp.StatusCode)
 }

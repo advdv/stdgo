@@ -92,6 +92,7 @@ func Provide(name ...string) fx.Option {
 	addrAnns := []fx.Annotation{}
 	lnAnns := []fx.Annotation{}
 	invAnns := []fx.Annotation{}
+
 	if len(name) > 0 {
 		newAnns = []fx.Annotation{fx.ParamTags(``, tag(name[0]), tag(name[0]), tag(name[0])), fx.ResultTags(tag(name[0]))}
 		addrAnns = []fx.Annotation{fx.ParamTags(tag(name[0])), fx.ResultTags(tag(name[0]))}

@@ -1,0 +1,75 @@
+{
+  "amp.permissions": [
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*mise r *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*aws *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*go *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*buf *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*test *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*jq *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*golangci-lint *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*npx *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*curl *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*date *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*gh *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*docker *" },
+      "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*sleep *" },
+      "action": "allow"
+    }
+  ],
+  "amp.mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated"]
+    }
+  }
+}

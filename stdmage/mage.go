@@ -14,14 +14,16 @@ import (
 func MustBeInRootIfNotTest() {
 	const filename = "go.mod"
 
-	if _, err := os.ReadFile(filename); err != nil && !strings.Contains(strings.Join(os.Args, ""), "-test.") {
+	_, err := os.ReadFile(filename)
+	if err != nil && !strings.Contains(strings.Join(os.Args, ""), "-test.") {
 		panic("must be in project root, couldn't stat " + filename + " file: " + err.Error())
 	}
 }
 
 // LoadEnv for loading environment variables for standard dev, stag and prod.
 func LoadEnv(env string) error {
-	if err := godotenv.Overload(".env", ".env."+env); err != nil && !os.IsNotExist(err) {
+	err := godotenv.Overload(".env", ".env."+env)
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to load env variables: %w", err)
 	}
 

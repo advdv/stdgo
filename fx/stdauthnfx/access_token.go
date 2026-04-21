@@ -38,6 +38,7 @@ func (ac *AccessControl) authenticateAccessToken(
 	}
 
 	stdctx.Log(ctx).Info("authenticated", zap.String("subject", sub))
+
 	return WithWebUserAccess(ctx, ac.validator, stdauthnfxv1.AccessIdentity_builder{
 		Subject: proto.String(sub),
 	}.Build()), nil

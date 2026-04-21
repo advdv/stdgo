@@ -31,6 +31,7 @@ func NewValidateResponse(val protovalidate.Validator) connect.UnaryInterceptorFu
 			return resp, validate(val, resp.Any())
 		})
 	}
+
 	return connect.UnaryInterceptorFunc(interceptor)
 }
 
@@ -45,11 +46,16 @@ func validate(validator protovalidate.Validator, msg any) error {
 	if err == nil {
 		return nil
 	}
+
 	connectErr := connect.NewError(connect.CodeInternal, fmt.Errorf("response: %w", err))
-	if validationErr := new(protovalidate.ValidationError); errors.As(err, &validationErr) {
-		if detail, err := connect.NewErrorDetail(validationErr.ToProto()); err == nil {
+
+	validationErr := new(protovalidate.ValidationError)
+	if errors.As(err, &validationErr) {
+		detail, detailErr := connect.NewErrorDetail(validationErr.ToProto())
+		if detailErr == nil {
 			connectErr.AddDetail(detail)
 		}
 	}
+
 	return connectErr
 }

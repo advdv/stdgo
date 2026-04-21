@@ -36,6 +36,7 @@ func TestSetup(t *testing.T) {
 
 	// expect a soft stop.
 	var obs *observer.ObservedLogs
+
 	t.Cleanup(func() {
 		require.Len(t, obs.FilterMessageSnippet("soft stop succeeded, no hard stop necessary").All(), 1)
 	})
@@ -108,6 +109,7 @@ func TestHardStop(t *testing.T) {
 	t.Parallel()
 
 	var obs *observer.ObservedLogs
+
 	t.Cleanup(func() {
 		require.Len(t, obs.FilterMessageSnippet("Hard stop started").All(), 1)
 	})
@@ -127,11 +129,13 @@ func TestSoftStopAfterCompleted(t *testing.T) {
 	t.Parallel()
 
 	var obs *observer.ObservedLogs
+
 	t.Cleanup(func() {
 		require.Len(t, obs.FilterMessageSnippet("soft stop succeeded, no hard stop necessary").All(), 1)
 	})
 
 	var heartbeat stdriverfx.Enqueuer[*workheartbeatv1.Args]
+
 	ctx, wrks, txr := setup(t, &obs, &heartbeat)
 	args := workheartbeatv1.Args_builder{BlockFor: durationpb.New(time.Millisecond)}.Build()
 	stdrivertest.EnqueueJob(ctx, t, txr, heartbeat, args)
@@ -151,6 +155,7 @@ func TestEnqeueuValidation(t *testing.T) {
 	t.Parallel()
 
 	var heartbeat stdriverfx.Enqueuer[*workheartbeatv1.Args]
+
 	ctx, _, txr := setup(t, &heartbeat)
 	args := workheartbeatv1.Args_builder{}.Build()
 
@@ -172,6 +177,7 @@ func TestWorkArgumentValidation(t *testing.T) {
 	})
 
 	err := tw.Work(ctx, &river.Job[*workheartbeatv1.Args]{})
+
 	var valErr *protovalidate.ValidationError
 	require.ErrorAs(t, err, &valErr)
 	require.ErrorIs(t, err, &river.JobCancelError{})

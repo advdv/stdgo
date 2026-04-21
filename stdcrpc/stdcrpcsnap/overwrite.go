@@ -23,6 +23,7 @@ type OverwriteAssertFunc func(t assert.TestingT, v gjson.Result)
 // assertions checked.
 func ApplyOverwrite(tb require.TestingT, actMsg []byte, actOverwrites ...Overwrite) []byte {
 	var err error
+
 	for _, actOverwrite := range actOverwrites {
 		actVal := gjson.GetBytes(actMsg, actOverwrite.Path)
 		// if actOverwrite.Assert != nil {

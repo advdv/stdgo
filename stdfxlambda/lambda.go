@@ -69,11 +69,13 @@ func RunApp(app *fx.App, hdlr lambda.Handler, opts ...lambda.Option) (exitCode i
 func RunNewApp(opts ...fx.Option) (exitCode int) {
 	var run struct {
 		fx.In
+
 		H lambda.Handler
 		O []lambda.Option `optional:"true"`
 	}
 
 	app := fx.New(append(opts, fx.Populate(&run))...)
+
 	return RunApp(app, run.H, run.O...)
 }
 

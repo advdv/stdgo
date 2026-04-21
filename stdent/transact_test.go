@@ -72,6 +72,7 @@ func TestNestedWithTx(t *testing.T) {
 	ctx, client, txr := setup(t)
 
 	var reachedInner bool
+
 	res, err := stdent.Transact1(ctx, txr, func(ctx context.Context, tx1 *mockTx1) (int64, error) {
 		return 44, stdent.Transact0(ctx, txr, func(ctx context.Context, tx2 *mockTx1) error {
 			reachedInner = true
@@ -140,20 +141,25 @@ func TestAlreadyDoneIsOK(t *testing.T) {
 func TestGoexitRollback(t *testing.T) {
 	ctx, client, txr := setup(t)
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
+
 		stdent.Transact0(ctx, txr, func(ctx context.Context, _ *mockTx1) error {
 			runtime.Goexit()
 			return nil
 		})
 	}()
+
 	<-done
+
 	require.Equal(t, int64(1), client.numRollbacks)
 }
 
 func TestSerializableFailure(t *testing.T) {
 	ctx, client, txr := setup(t)
 	start := make(chan struct{})
+
 	var numAttempts int64
 
 	// this work on the transaction creates contention and forces the retry.
@@ -180,14 +186,18 @@ func TestSerializableFailure(t *testing.T) {
 
 	// setup both transactions, waiting to be executed
 	var wg sync.WaitGroup
+
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
+
 		assert.NoError(t, stdent.Transact0(ctx, txr, txWork))
 	}()
 
 	go func() {
 		defer wg.Done()
+
 		assert.NoError(t, stdent.Transact0(ctx, txr, txWork))
 	}()
 

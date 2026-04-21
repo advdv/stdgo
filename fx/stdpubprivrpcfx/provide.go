@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Config configures the public/private RPC module.
 type Config struct {
 	// allow health endpoint to panic, for testing purposes.
 	AllowForcedPanics bool `env:"ALLOW_FORCED_PANICS"`
@@ -33,13 +34,14 @@ type Config struct {
 	ConnectCORSAllowedOrigins []string `env:"CONNECT_CORS_ALLOWED_ORIGINS"`
 	// allow configuration for the OpenAPI endpoint.
 	OpenAPICORSAllowedOrigins []string `env:"OPENAPI_CORS_ALLOWED_ORIGINS"`
-	// for making the hosted openapi spec fully descriptive, the environmnet must specify how to reach it externally.
+	// for making the hosted openapi spec fully descriptive, the environment must specify how to reach it externally.
 	OpenAPIExternalBaseURL *url.URL `env:"OPENAPI_EXTERNAL_BASE_URL"`
 
 	// configuration set via a depdency.
 	basePath RPCBasePath
 }
 
+// New creates the public and private HTTP handlers for the RPC services.
 func New[PUBRO, PUBRW, PRIVRW, PRIVRWC any](deps struct {
 	fx.In
 	fx.Lifecycle
@@ -140,7 +142,7 @@ type openAPIMount struct {
 	stripped http.Handler
 }
 
-// newOpenAPI optionally sets up an Huma openapi instance for the application to
+// newOpenAPI optionally sets up an Huma openapi instance for the application to.
 func newOpenAPI(deps struct {
 	fx.In
 	Config         Config
@@ -204,7 +206,7 @@ func withNonRPCHandling[PRIVRWC any](
 	cfg Config,
 	isPrivate bool,
 	hcheck HealthCheck,
-	LambdaRelays []*LambdaRelay,
+	lambdaRelays []*LambdaRelay,
 	newPrivateClientFn func(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PRIVRWC,
 	oapiMount *openAPIMount,
 ) http.Handler {
@@ -236,14 +238,14 @@ func withNonRPCHandling[PRIVRWC any](
 
 	// lambda relays need to call to an in-memory server of the final mux setup.
 	final := stdhttpware.Apply(mux, logs)
-	if len(LambdaRelays) > 0 {
+	if len(lambdaRelays) > 0 {
 		sys, err := newInMemSysClient(licecycle, cfg, final, newPrivateClientFn)
 		if err != nil {
 			panic(fmt.Sprintf("init memsys for lambda relays: %v", err))
 		}
 
 		// create endpoints for every configured relay. But they are mounted on the non-final mux.
-		for _, relay := range LambdaRelays {
+		for _, relay := range lambdaRelays {
 			pattern := "/lambda/" + relay.Slug
 			logs.Info("mounting lambda relay", zap.String("slug", relay.Slug), zap.String("pattern", pattern))
 			mux.HandleFunc(pattern, relay.CreateHandlerFromSysClient(sys))
@@ -282,7 +284,7 @@ func Provide[PUBRO, PUBRW, PRIVRW, PRIVRWC any](
 	)
 }
 
-// type to carry the rpc base path.
+// RPCBasePath is a type to carry the rpc base path.
 type RPCBasePath struct{ V string }
 
 // TestProvide provides API clients for testing. We use the actual web public

@@ -51,6 +51,7 @@ func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 
 			// we check for a private address, so in that case we hide ELB checks.
 			isRemotePrivate := false
+
 			remoteIPPort, parseAddrErr := netip.ParseAddrPort("172.20.1.200:7948")
 			if parseAddrErr == nil && remoteIPPort.Addr().IsPrivate() {
 				isRemotePrivate = true
@@ -84,7 +85,7 @@ func recoverMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rvr := recover(); rvr != nil {
-					if rvr == http.ErrAbortHandler { //nolint:errorlint,goerr113
+					if rvr == http.ErrAbortHandler { //nolint:errorlint,err113
 						// we don't recover http.ErrAbortHandler so the response
 						// to the client is aborted, this should not be logged
 						panic(rvr)
@@ -98,7 +99,7 @@ func recoverMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 					if rerr, ok := rvr.(error); ok {
 						err = rerr
 					} else {
-						err = fmt.Errorf("non-error panic: %v", rvr) //nolint:goerr113
+						err = fmt.Errorf("non-error panic: %v", rvr) //nolint:err113
 					}
 
 					// NOTE: don't log using the contextual logger (with request information) because this recover

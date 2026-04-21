@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdauthnfx"
-	"github.com/advdv/stdgo/fx/stdauthnfx/insecureaccesstools"
 	stdauthnfxv1 "github.com/advdv/stdgo/fx/stdauthnfx/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -13,9 +12,9 @@ import (
 
 func TestAuthenticateAccessToken(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t, nil)
+	ctx, ac, accessToken := setup(t, nil)
 
-	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "Bearer "+insecureaccesstools.TestAccessToken3)
+	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "Bearer "+accessToken)
 	require.NoError(t, err)
 
 	acc1 := stdauthnfx.FromContext(ctx)
@@ -31,7 +30,7 @@ func TestAuthenticateAccessToken(t *testing.T) {
 
 func TestAuthenticateAPIKey(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t, nil)
+	ctx, ac, _ := setup(t, nil)
 
 	key1, err := ac.BuildAndSignAPIKey(stdauthnfxv1.Access_builder{
 		IsSystem: proto.Bool(true),
@@ -55,15 +54,15 @@ func TestAuthenticateAPIKey(t *testing.T) {
 
 func TestAnonymousNoHeader(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t, nil)
+	ctx, ac, _ := setup(t, nil)
 
-	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
+	_, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
 	require.ErrorContains(t, err, "no authorization header")
 }
 
 func TestAnonymous(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t, []string{"/acme.foo.v1.FooService/Bar"})
+	ctx, ac, _ := setup(t, []string{"/acme.foo.v1.FooService/Bar"})
 
 	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
 	require.NoError(t, err)
@@ -76,7 +75,7 @@ func TestAnonymous(t *testing.T) {
 
 func TestAnonymousWildcard(t *testing.T) {
 	t.Parallel()
-	ctx, ac := setup(t, []string{"/*/*"})
+	ctx, ac, _ := setup(t, []string{"/*/*"})
 
 	ctx, err := ac.Authenticate(ctx, "/acme.foo.v1.FooService/Bar", "")
 	require.NoError(t, err)

@@ -19,6 +19,7 @@ func TestConnectTxOk(t *testing.T) {
 	t.Parallel()
 
 	var obs *observer.ObservedLogs
+
 	ctx, rw, _ := setup(t, &obs)
 
 	resp, err := stdpgxtxfx.CTx(ctx, rw, connect.NewRequest(wrapperspb.String("hello")),

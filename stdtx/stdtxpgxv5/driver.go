@@ -36,33 +36,14 @@ func New(db *pgxpool.Pool, opts ...Option) stdtx.Driver[pgx.Tx] {
 	return drv
 }
 
-// setup the tx when it's created. Allows additional sql to be run on every tx.
-func (d driver) setupTx(ctx context.Context, tx pgx.Tx) (err error) {
-	sql := &strings.Builder{}
+// TxDoneError what error is returned by the tx if it's already done.
+func (d driver) TxDoneError() error {
+	return pgx.ErrTxClosed
+}
 
-	// call any customization to sql ran at the start of the tx.
-	sql, err = d.opts.txBeginSQL(ctx, sql, tx)
-	if err != nil {
-		return fmt.Errorf("setup hook: %w", err)
-	}
-
-	// build-in option to discourage sequential scans.
-	if d.opts.discourageSeqScans {
-		sql.WriteString(`SET LOCAL enable_seqscan = OFF;`)
-	}
-
-	// no sql to execute
-	if sql.String() == "" {
-		return nil
-	}
-
-	// begin sql is never asserted for max query costs.
-	ctx = stdtx.WithNoTestForMaxQueryPlanCosts(ctx)
-	if _, err := tx.Exec(ctx, sql.String()); err != nil {
-		return fmt.Errorf("execute tx begin sql: %w", err)
-	}
-
-	return nil
+// SerializationFailureMaxRetries configures how many retries are done when a serialization failure occurs.
+func (d driver) SerializationFailureMaxRetries() int {
+	return 50
 }
 
 // BeginTx implements the starting of a transaction.
@@ -105,12 +86,31 @@ func (d driver) SerializationFailureCodes() []string {
 	return []string{"40001"}
 }
 
-// SerializationFailureMaxRetries configures how many retries are done when a serialization failure occurs.
-func (d driver) SerializationFailureMaxRetries() int {
-	return 50
-}
+// setup the tx when it's created. Allows additional sql to be run on every tx.
+func (d driver) setupTx(ctx context.Context, tx pgx.Tx) (err error) {
+	sql := &strings.Builder{}
 
-// TxDoneError what error is returned by the tx if it's already done.
-func (d driver) TxDoneError() error {
-	return pgx.ErrTxClosed
+	// call any customization to sql ran at the start of the tx.
+	sql, err = d.opts.txBeginSQL(ctx, sql, tx)
+	if err != nil {
+		return fmt.Errorf("setup hook: %w", err)
+	}
+
+	// build-in option to discourage sequential scans.
+	if d.opts.discourageSeqScans {
+		sql.WriteString(`SET LOCAL enable_seqscan = OFF;`)
+	}
+
+	// no sql to execute
+	if sql.String() == "" {
+		return nil
+	}
+
+	// begin sql is never asserted for max query costs.
+	ctx = stdtx.WithNoTestForMaxQueryPlanCosts(ctx)
+	if _, err := tx.Exec(ctx, sql.String()); err != nil {
+		return fmt.Errorf("execute tx begin sql: %w", err)
+	}
+
+	return nil
 }

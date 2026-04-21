@@ -1,4 +1,3 @@
-// Package stdfxlambda provides a typed context to standardize handling in our Lambda functions.
 package stdfxlambda
 
 import (
@@ -22,11 +21,12 @@ type Context interface {
 
 // lambdaContext implements the standard Lambda context.
 type lambdaContext struct {
+	context.Context
+
 	awsRequestID       string
 	invokedFunctionARN string
 
 	logs *zap.Logger
-	context.Context
 }
 
 func (ctx lambdaContext) InvokedFunctionARN() string {

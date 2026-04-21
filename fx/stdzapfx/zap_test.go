@@ -18,6 +18,7 @@ import (
 
 func TestNonTestingLogger(t *testing.T) {
 	tmpfp := filepath.Join(t.TempDir(), fmt.Sprintf("test_logging_%d.log", time.Now().UnixNano()))
+
 	var logs *zap.Logger
 
 	app := fxtest.New(t,
@@ -28,6 +29,7 @@ func TestNonTestingLogger(t *testing.T) {
 		fx.Decorate(func(c stdzapfx.Config) stdzapfx.Config {
 			c.Outputs = []string{tmpfp}
 			c.Level = zap.WarnLevel
+
 			return c
 		}),
 	)

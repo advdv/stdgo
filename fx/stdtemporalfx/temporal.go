@@ -22,6 +22,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+// Config configures the Temporal module.
 type Config struct {
 	// temporal server grpc
 	TemporalHostPort string `env:"TEMPORAL_HOST_PORT" envDefault:"localhost:7233"`
@@ -100,7 +101,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 
 		// create a new namespace for this test.
 		rngb := make([]byte, 6)
-		rand.Read(rngb) //nolint:errcheck
+		rand.Read(rngb)
 		c.namespace = fmt.Sprintf("%s-%x", c.namespace, rngb)
 
 		if err := c.nsClient.Register(ctx, &workflowservice.RegisterNamespaceRequest{
@@ -122,7 +123,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 	if c.cfg.TemporalAPIKey != "" {
 		opts.Credentials = client.NewAPIKeyStaticCredentials(c.cfg.TemporalAPIKey)
 		opts.ConnectionOptions = client.ConnectionOptions{
-			TLS: &tls.Config{}, //nolint:gosec
+			TLS: &tls.Config{},
 		}
 	}
 
@@ -134,6 +135,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 	return nil
 }
 
+// CheckHealth checks if the Temporal client is healthy.
 func (c *Temporal) CheckHealth(ctx context.Context) error {
 	// NOTE: frustratingly, the client.CheckHealth doesn't seem to work with Temporal cloud. Others seem to confirm:
 	// https://community.temporal.io/t/python-sdk-health-check-to-temporal-cloud-fails-with-request-unauthorized/17112
@@ -169,6 +171,7 @@ func (c *Temporal) Stop(ctx context.Context) (err error) {
 	return nil
 }
 
+// Provide provides the Temporal components as fx dependencies.
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdtemporal",
 		// provide the temporal client.

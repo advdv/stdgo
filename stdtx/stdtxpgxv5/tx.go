@@ -57,6 +57,7 @@ func (tx wtx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 // logAndAssertQueryPlanCosts does the heavy lifting of asserting the query plan costs.
 func (tx wtx) logAndAssertQueryPlanCosts(ctx context.Context, logMsg, sql string, args ...any) error {
 	stdctx.Log(ctx).Log(tx.execQueryLogLevel, logMsg, zap.String("sql", sql), zap.Any("args", args))
+
 	if tx.maxQueryPlanCosts <= 0 || stdtx.NoTestForMaxQueryPlanCosts(ctx) {
 		return nil // do nothing
 	}
@@ -77,6 +78,7 @@ func (tx wtx) logAndAssertQueryPlanCosts(ctx context.Context, logMsg, sql string
 	}
 
 	expSQL := `EXPLAIN (FORMAT JSON) ` + sql
+
 	var explJSON string
 	if err := tx.Tx.QueryRow(ctx, expSQL, args...).Scan(&explJSON); err != nil {
 		return fmt.Errorf("query row for EXPLAIN, sql: '%s', error: %w", expSQL, err)
@@ -88,6 +90,7 @@ func (tx wtx) logAndAssertQueryPlanCosts(ctx context.Context, logMsg, sql string
 	}
 
 	var cumCostOfAllPlans float64
+
 	for i, plan := range expl {
 		stdctx.Log(ctx).Log(tx.execQueryLogLevel, "explained query plan",
 			zap.Int("plan_idx", i),

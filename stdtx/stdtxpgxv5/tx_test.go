@@ -12,6 +12,7 @@ func TestNoBeginSQL(t *testing.T) {
 	ctx, drv, _ := setup(t, stdtxpgxv5.TestForMaxQueryPlanCosts(1))
 	tx, err := drv.BeginTx(ctx)
 	require.NoError(t, err)
+
 	defer tx.Rollback(ctx)
 }
 
@@ -19,6 +20,7 @@ func TestAssertQueryPlanCosts(t *testing.T) {
 	ctx, drv, _ := setup(t, stdtxpgxv5.TestForMaxQueryPlanCosts(0.000001))
 	tx, err := drv.BeginTx(ctx)
 	require.NoError(t, err)
+
 	defer tx.Rollback(ctx)
 
 	var v int
@@ -38,6 +40,7 @@ func TestAssertQueryPlanCostsWithDiscourage(t *testing.T) {
 		stdtxpgxv5.TestForMaxQueryPlanCosts(300))
 	tx, err := drv.BeginTx(ctx)
 	require.NoError(t, err)
+
 	defer tx.Rollback(ctx)
 
 	ddlCtx := stdtx.WithNoTestForMaxQueryPlanCosts(ctx)

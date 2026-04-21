@@ -40,6 +40,7 @@ func TestSetupTx(t *testing.T) {
 
 	tx, err := drv.BeginTx(ctx)
 	require.NoError(t, err)
+
 	defer tx.Rollback(ctx)
 
 	var str string
@@ -57,6 +58,7 @@ func TestSetupTx(t *testing.T) {
 func TestOnTxCommit(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		var called int64
+
 		var accessMode pgx.TxAccessMode
 		ctx, drv, _ := setup(t,
 			stdtxpgxv5.AccessMode(pgx.ReadOnly),
@@ -83,6 +85,7 @@ func TestOnTxCommit(t *testing.T) {
 
 		tx, err := drv.BeginTx(ctx)
 		defer tx.Rollback(ctx)
+
 		require.NoError(t, err)
 		require.ErrorContains(t, drv.CommitTx(ctx, tx), "foo")
 	})

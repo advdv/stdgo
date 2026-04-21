@@ -8,4 +8,5 @@ type AuthBackend interface {
 // RealAuthBackend is used when actually deploying.
 type RealAuthBackend string
 
+// JWKSEndpoint returns the JWKS endpoint URL.
 func (ap RealAuthBackend) JWKSEndpoint() string { return string(ap) }

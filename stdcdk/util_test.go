@@ -51,14 +51,14 @@ func TestRegionAcronym(t *testing.T) {
 func TestStringContext(t *testing.T) {
 	tests := []struct {
 		name        string
-		context     map[string]interface{}
+		context     map[string]any
 		key         string
 		expected    string
 		shouldPanic bool
 	}{
-		{"String value", map[string]interface{}{"key1": "value1"}, "key1", "value1", false},
-		{"Non-string value", map[string]interface{}{"key2": 123}, "key2", "", true},
-		{"Missing key", map[string]interface{}{"key3": "value3"}, "missing_key", "", true},
+		{"String value", map[string]any{"key1": "value1"}, "key1", "value1", false},
+		{"Non-string value", map[string]any{"key2": 123}, "key2", "", true},
+		{"Missing key", map[string]any{"key3": "value3"}, "missing_key", "", true},
 	}
 
 	for _, tt := range tests {
@@ -80,19 +80,19 @@ func TestStringContext(t *testing.T) {
 func TestNewStack(t *testing.T) {
 	tests := []struct {
 		name            string
-		context         map[string]interface{}
+		context         map[string]any
 		region          string
 		expectedStackID string
 	}{
 		{
 			name:            "US East region with dev environment",
-			context:         map[string]interface{}{"qualifier": "myapp", "environment": "dev"},
+			context:         map[string]any{"qualifier": "myapp", "environment": "dev"},
 			region:          "us-east-1",
 			expectedStackID: "myappiad",
 		},
 		{
 			name:            "EU Central region with prod environment",
-			context:         map[string]interface{}{"qualifier": "myapp", "environment": "prod"},
+			context:         map[string]any{"qualifier": "myapp", "environment": "prod"},
 			region:          "eu-central-1",
 			expectedStackID: "myappfra",
 		},

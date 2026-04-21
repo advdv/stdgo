@@ -11,6 +11,7 @@ import (
 
 type ctxKey string
 
+// WithAccess stores the given access in the context after validation.
 func WithAccess(ctx context.Context, val protovalidate.Validator, access *stdauthnfxv1.Access) context.Context {
 	if err := val.Validate(access); err != nil {
 		panic("stdauthnfx: invalid access for context: " + err.Error())
@@ -19,12 +20,14 @@ func WithAccess(ctx context.Context, val protovalidate.Validator, access *stdaut
 	return context.WithValue(ctx, ctxKey("access"), access)
 }
 
+// WithAnonymousAccess stores anonymous access in the context.
 func WithAnonymousAccess(ctx context.Context, val protovalidate.Validator) context.Context {
 	return WithAccess(ctx, val, stdauthnfxv1.Access_builder{
 		IsAnonymous: proto.Bool(true),
 	}.Build())
 }
 
+// WithWebUserAccess stores web-user access with the given identity in the context.
 func WithWebUserAccess(
 	ctx context.Context, val protovalidate.Validator, info *stdauthnfxv1.AccessIdentity,
 ) context.Context {
@@ -33,6 +36,7 @@ func WithWebUserAccess(
 	}.Build())
 }
 
+// FromContext retrieves the access information from the context.
 func FromContext(ctx context.Context) *stdauthnfxv1.Access {
 	v, ok := ctx.Value(ctxKey("access")).(*stdauthnfxv1.Access)
 	if !ok {
@@ -42,6 +46,7 @@ func FromContext(ctx context.Context) *stdauthnfxv1.Access {
 	return v
 }
 
+// WithAPIKeyFingerprint stores the hashed API key fingerprint in the context.
 func WithAPIKeyFingerprint(ctx context.Context, hash hash.Hash, data []byte) context.Context {
 	if _, err := hash.Write(data); err != nil {
 		panic("stdauthnfx: hash api key: " + err.Error())
@@ -50,6 +55,7 @@ func WithAPIKeyFingerprint(ctx context.Context, hash hash.Hash, data []byte) con
 	return context.WithValue(ctx, ctxKey("api_key_fingerprint"), hash.Sum(nil))
 }
 
+// APIKeyFingerprint returns the API key fingerprint from the context, if present.
 func APIKeyFingerprint(ctx context.Context) ([]byte, bool) {
 	v, ok := ctx.Value(ctxKey("api_key_fingerprint")).([]byte)
 	return v, ok

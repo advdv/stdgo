@@ -9,6 +9,7 @@ type options struct {
 	readOnly                       bool
 }
 
+// Option configures a Transactor.
 type Option func(opts *options)
 
 // SerializationFailureMaxRetries configures the maximum number of retries in case the transacted
@@ -32,15 +33,18 @@ func ReadOnly(v bool) Option {
 	return func(opts *options) { opts.readOnly = v }
 }
 
+// Transactor manages transactional operations with retry logic for serialization failures.
 type Transactor[T Tx] struct {
 	opts   options
 	client Client[T]
 }
 
+// IsReadOnly reports whether the transactor is configured for read-only transactions.
 func (txr Transactor[T]) IsReadOnly() bool {
 	return txr.opts.readOnly
 }
 
+// New creates a new Transactor with the given client and options.
 func New[T Tx](client Client[T], opts ...Option) *Transactor[T] {
 	txr := &Transactor[T]{client: client}
 

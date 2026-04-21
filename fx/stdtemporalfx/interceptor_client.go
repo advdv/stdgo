@@ -16,10 +16,12 @@ type DefaultClientInterceptor struct {
 	validator protovalidate.Validator
 }
 
+// NewDefaultClientInterceptor creates a new DefaultClientInterceptor.
 func NewDefaultClientInterceptor(val protovalidate.Validator) *DefaultClientInterceptor {
 	return &DefaultClientInterceptor{validator: val}
 }
 
+// InterceptClient intercepts outbound client calls.
 func (c *DefaultClientInterceptor) InterceptClient(
 	next interceptor.ClientOutboundInterceptor,
 ) interceptor.ClientOutboundInterceptor {

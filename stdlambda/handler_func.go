@@ -11,6 +11,7 @@ import (
 // HandlerFunc implements lambda.Handler, similar to http.HandlerFunc.
 type HandlerFunc func(ctx context.Context, payload []byte) ([]byte, error)
 
+// Invoke calls the handler function.
 func (f HandlerFunc) Invoke(ctx context.Context, payload []byte) ([]byte, error) {
 	return f(ctx, payload)
 }
@@ -23,6 +24,7 @@ var _ lambda.Handler = HandlerFunc(func(context.Context, []byte) ([]byte, error)
 type JSONHandlerFunc[
 	I, O any] func(ctx context.Context, payload I) (O, error)
 
+// Invoke decodes the JSON payload, calls the handler, and encodes the result.
 func (f JSONHandlerFunc[I, O]) Invoke(ctx context.Context, payload []byte) ([]byte, error) {
 	inputp := new(I)
 	if err := json.Unmarshal(payload, inputp); err != nil {

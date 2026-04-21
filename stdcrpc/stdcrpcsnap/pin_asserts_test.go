@@ -14,7 +14,7 @@ type recordT struct {
 	msg string
 }
 
-func (t *recordT) Errorf(format string, args ...interface{}) {
+func (t *recordT) Errorf(format string, args ...any) {
 	t.msg = fmt.Sprintf(format, args...)
 }
 
@@ -34,6 +34,7 @@ func TestAsserts(t *testing.T) {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
 			rec := recordT{}
 			tt.ass(&rec, gjson.Parse(tt.inp))
+
 			if tt.exp == "" {
 				require.Empty(t, rec.msg)
 			} else {

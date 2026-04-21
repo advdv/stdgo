@@ -31,6 +31,7 @@ func (e enqueuer[T]) Enqueue(
 	}
 
 	_, err := e.client.InsertTx(ctx, tx, args, &e.opts)
+
 	return err
 }
 

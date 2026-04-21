@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// JobInState returns a filter function that matches jobs in one of the expected states.
 func JobInState(expectState ...rivertype.JobState) func(jr *rivertype.JobRow, _ error) bool {
 	return func(jr *rivertype.JobRow, _ error) bool {
 		return slices.Contains(expectState, jr.State)
@@ -44,11 +45,13 @@ func WaitForJobsByKind(
 
 		// filter the rows we're interested in
 		var filtered []*rivertype.JobRow
+
 		for _, job := range jobs.Jobs {
 			// gather any errors we observe in eligible jobs. To make it easier to observe them in
 			// tests when we're waiting for jobs. It is important to note though that it is not guaranteed
 			// that all errors are observed as they might occur and get fixed right between polling windows.
 			var jobErrs error
+
 			if len(job.Errors) > 0 {
 				for _, err := range job.Errors {
 					jobErrs = errors.Join(jobErrs, errors.New(err.Error))
@@ -66,6 +69,7 @@ func WaitForJobsByKind(
 		}
 
 		res = filtered
+
 		return true
 	}, time.Second*3, time.Millisecond*10)
 

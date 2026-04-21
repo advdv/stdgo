@@ -13,6 +13,25 @@ import (
 // ExecuteFunc defines the signature for executing a command.
 type ExecuteFunc func(ctx context.Context, stdin io.Reader, dir, program string, args ...string) (string, error)
 
+// AtlasDirMigrator is a pgtestdb.Migrator that uses the `atlas` CLI
+// tool to perform migrations.
+//
+//	atlas migrate apply --url $DB --dir file://$migrationsDirPath
+//
+// AtlasDirMigrator requires that it runs in an environment where the `atlas` CLI is
+// in the $PATH. It shells out to that program to perform its migrations,
+// as recommended by the Atlas maintainers.
+//
+// AtlasDirMigrator does not perform any Verify() or Prepare() logic.
+type AtlasDirMigrator struct {
+	MigrationsDirPath string
+	AtlasEnv          string
+	AtlasConfig       string
+	Dir               string
+
+	execute ExecuteFunc
+}
+
 // NewAtlasDirMigrator returns a [AtlasDirMigrator], which is a pgtestdb.Migrator that
 // uses the `atlas` CLI tool to perform migrations.
 //
@@ -33,25 +52,7 @@ func NewAtlasDirMigrator(
 	}
 }
 
-// AtlasDirMigrator is a pgtestdb.Migrator that uses the `atlas` CLI
-// tool to perform migrations.
-//
-//	atlas migrate apply --url $DB --dir file://$migrationsDirPath
-//
-// AtlasDirMigrator requires that it runs in an environment where the `atlas` CLI is
-// in the $PATH. It shells out to that program to perform its migrations,
-// as recommended by the Atlas maintainers.
-//
-// AtlasDirMigrator does not perform any Verify() or Prepare() logic.
-type AtlasDirMigrator struct {
-	MigrationsDirPath string
-	AtlasEnv          string
-	AtlasConfig       string
-	Dir               string
-
-	execute ExecuteFunc
-}
-
+// Hash returns a hash of the atlas migration directory for caching.
 func (m *AtlasDirMigrator) Hash() (string, error) {
 	return common.HashFile(filepath.Join(m.MigrationsDirPath, "atlas.sum"))
 }

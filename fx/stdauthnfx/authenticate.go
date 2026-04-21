@@ -14,6 +14,7 @@ import (
 // and the "anonymous" access behavior is triggered.
 func (ac *AccessControl) Authenticate(ctx context.Context, rpcMethod, authzHeader string) (context.Context, error) {
 	logs := stdctx.Log(ctx)
+
 	if authzHeader == "" {
 		// base on a whitelist in the environment, we allow anonymous access on some (or all) methods.
 		if checkWhiteList(rpcMethod, ac.config.AnonymousAccessWhitelist) {
@@ -21,12 +22,13 @@ func (ac *AccessControl) Authenticate(ctx context.Context, rpcMethod, authzHeade
 				zap.String("rpc_method", rpcMethod),
 				zap.Strings("whitelist", ac.config.AnonymousAccessWhitelist))
 			return WithAnonymousAccess(ctx, ac.validator), nil
-		} else {
-			logs.Info("no anonymous authentication",
-				zap.String("rpc_method", rpcMethod),
-				zap.Strings("whitelist", ac.config.AnonymousAccessWhitelist))
-			return ctx, errors.Errorf("no authorization header")
 		}
+
+		logs.Info("no anonymous authentication",
+			zap.String("rpc_method", rpcMethod),
+			zap.Strings("whitelist", ac.config.AnonymousAccessWhitelist))
+
+		return ctx, errors.Errorf("no authorization header")
 	}
 
 	bearer, ok := bearerToken(authzHeader)

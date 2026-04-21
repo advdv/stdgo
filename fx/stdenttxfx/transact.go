@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"entgo.io/ent/dialect"
-	entdialect "entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -27,6 +26,7 @@ type Config struct {
 	TestMaxQueryCosts float64 `env:"TEST_MAX_QUERY_COSTS"`
 }
 
+// ClientFactoryFunc is a function that creates an ent client from a dialect driver.
 type ClientFactoryFunc[T stdent.Tx, C stdent.Client[T]] = func(driver dialect.Driver) C
 
 // Params describe fx params for creating the transactors.
@@ -67,16 +67,16 @@ func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error
 	}
 
 	// read-write side
-	rwBaseDrv := entsql.NewDriver(entdialect.Postgres, entsql.Conn{ExecQuerier: params.RW})
+	rwBaseDrv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: params.RW})
 	rwDrv := stdent.NewDriver(rwBaseDrv, opts...)
 	rwClient := params.ClientFactory(rwDrv)
-	params.Lifecycle.Append(fx.Hook{OnStop: func(context.Context) error { return params.RW.Close() }})
+	params.Append(fx.Hook{OnStop: func(context.Context) error { return params.RW.Close() }})
 
 	// read-only side
-	roBaseDrv := entsql.NewDriver(entdialect.Postgres, entsql.Conn{ExecQuerier: params.RO})
+	roBaseDrv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: params.RO})
 	roDrv := stdent.NewDriver(roBaseDrv, opts...)
 	roClient := params.ClientFactory(roDrv)
-	params.Lifecycle.Append(fx.Hook{OnStop: func(context.Context) error { return params.RO.Close() }})
+	params.Append(fx.Hook{OnStop: func(context.Context) error { return params.RO.Close() }})
 
 	return Result[T]{
 		ReadWrite: stdent.New(rwClient),

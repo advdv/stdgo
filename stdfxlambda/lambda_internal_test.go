@@ -31,7 +31,9 @@ func TestRunAppOnLambda(t *testing.T) {
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", "testing")
 
 	var actHandler any
+
 	var actOpts []lambda.Option
+
 	lambdaStartFunc = func(handler any, options ...lambda.Option) { actHandler = handler; actOpts = options }
 
 	hdlr := &testHandlers{}
@@ -47,7 +49,9 @@ func TestRunNewApp(t *testing.T) {
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", "testing")
 
 	var actHandler any
+
 	var actOpts []lambda.Option
+
 	lambdaStartFunc = func(handler any, options ...lambda.Option) { actHandler = handler; actOpts = options }
 
 	hdlr := &testHandlers{}

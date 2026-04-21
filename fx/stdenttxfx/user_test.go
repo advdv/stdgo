@@ -14,6 +14,7 @@ func TestUser(t *testing.T) {
 	t.Parallel()
 
 	var obs *observer.ObservedLogs
+
 	ctx, _, rw := setup(t, &obs)
 
 	require.NoError(t, stdent.Transact0(ctx, rw, func(ctx context.Context, tx *model.Tx) error {

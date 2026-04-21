@@ -30,7 +30,8 @@ func New(cfg Config) (acfg aws.Config, err error) {
 		opts = append(opts, config.WithSharedConfigProfile(cfg.OverwriteSharedConfigProfile))
 	}
 
-	if acfg, err = config.LoadDefaultConfig(ctx, opts...); err != nil {
+	acfg, err = config.LoadDefaultConfig(ctx, opts...)
+	if err != nil {
 		return acfg, fmt.Errorf("failed to load default config: %w", err)
 	}
 

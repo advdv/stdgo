@@ -25,7 +25,8 @@ func Init(dotEnvDevEnv string, _ ...[]string) {
 
 // Lint our codebase.
 func Lint() error {
-	if err := sh.Run("golangci-lint", "run"); err != nil {
+	err := sh.Run("golangci-lint", "run")
+	if err != nil {
 		return fmt.Errorf("failed to run golang-ci: %w", err)
 	}
 
@@ -34,7 +35,8 @@ func Lint() error {
 
 // Test tests the whole codebase.
 func Test() error {
-	if err := sh.Run("go", "test", "./..."); err != nil {
+	err := sh.Run("go", "test", "./...")
+	if err != nil {
 		return fmt.Errorf("failed to run tests: %w", err)
 	}
 
@@ -47,7 +49,8 @@ func Coverage() error {
 		TempDir(),
 		fmt.Sprintf("coverage_%d.out", time.Now().UnixMilli()))
 
-	if err := sh.Run("go", "test", "--coverprofile", coverageFile, "./..."); err != nil {
+	err := sh.Run("go", "test", "--coverprofile", coverageFile, "./...")
+	if err != nil {
 		return fmt.Errorf("failed to run tests with coverage: %w", err)
 	}
 
@@ -102,8 +105,11 @@ func BuildSome(names string) error {
 	if err := stdmage.LoadEnv(devEnv); err != nil {
 		return fmt.Errorf("failed to load development env: %w", err)
 	}
-	args := []string{"compose", "-f", "docker-compose.yml", "build"}
-	args = append(args, strings.Split(names, ",")...)
+
+	nameParts := strings.Split(names, ",")
+	args := make([]string, 0, 5+len(nameParts))
+	args = append(args, "compose", "-f", "docker-compose.yml", "build")
+	args = append(args, nameParts...)
 
 	if err := sh.Run("docker", args...); err != nil {
 		return fmt.Errorf("failed to run: %w", err)
@@ -115,6 +121,7 @@ func BuildSome(names string) error {
 // Release tags a version and pushes it to origin.
 func Release() error {
 	filename := "version.txt"
+
 	version, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to read version file: %w", err)
@@ -129,6 +136,7 @@ func Release() error {
 	tagName := string(version)
 
 	stderr := bytes.NewBuffer(nil)
+
 	_, err = sh.Exec(nil, nil, stderr, "git", "tag", tagName)
 	if err != nil && !strings.Contains(stderr.String(), "already exists") {
 		return fmt.Errorf("failed to tag: %w", err)

@@ -19,6 +19,7 @@ type TransactWorker[A JobArgs, O JobOutput] struct {
 	hdlr      func(_ context.Context, _ pgx.Tx, job *river.Job[A]) (O, error)
 }
 
+// NewTransactWorker creates a new TransactWorker.
 func NewTransactWorker[A JobArgs, O JobOutput](
 	txr *stdtx.Transactor[pgx.Tx],
 	val protovalidate.Validator,

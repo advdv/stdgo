@@ -1,3 +1,4 @@
+// Package stdauthnfx provides authentication and access control via JWTs and API keys.
 package stdauthnfx
 
 import (
@@ -16,6 +17,7 @@ import (
 	"go.uber.org/fx"
 )
 
+// Config holds configuration for authentication and access control.
 type Config struct {
 	// The base64-encoded key information for signing.
 	SigningKeySetBase64 string `env:"SIGNING_KEY_SET_BASE64,required"`
@@ -33,6 +35,7 @@ type Config struct {
 	AnonymousAccessWhitelist []string `env:"ANONYMOUS_ACCESS_WHITELIST"`
 }
 
+// AccessControl manages API key signing/validation and access token verification.
 type AccessControl struct {
 	config    Config
 	validator protovalidate.Validator
@@ -52,14 +55,17 @@ type AccessControl struct {
 	}
 }
 
+// New constructs a new AccessControl from the provided dependencies.
 func New(deps struct {
 	fx.In
+
 	Config    Config
 	Validator protovalidate.Validator
 	Hasher    func() hash.Hash `name:"api_key"`
 },
 ) (res struct {
 	fx.Out
+
 	AccessControl *AccessControl
 }, err error,
 ) {
@@ -98,6 +104,7 @@ func New(deps struct {
 		}
 
 		cacheLifecycleCtx := context.Background()
+
 		res.AccessControl.accessTokens.cache, err = jwk.NewCache(cacheLifecycleCtx, httprc.NewClient())
 		if err != nil {
 			return res, errors.Errorf("init jwk cache for access tokens: %w", err)
@@ -113,6 +120,7 @@ func New(deps struct {
 	return res, nil
 }
 
+// Provide returns an fx.Option that supplies AccessControl and its dependencies.
 func Provide() fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdauthn",
 		New,

@@ -16,7 +16,9 @@ import (
 // NewUIServer inits a River UI server.
 func NewUIServer(par struct {
 	fx.In
+
 	Config
+
 	RiverConfig river.Config
 	RUI         *pgxpool.Pool `name:"rui"` // dedicated pool so we can use a different schema (search_path)
 	Logs        *zap.Logger

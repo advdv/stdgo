@@ -26,7 +26,8 @@ func envConfigurer[T any](prefix ...string) func(o env.Options, vars Environment
 			envo.Prefix = prefix[0]
 		}
 
-		if err := env.ParseWithOptions(&cfg, envo); err != nil {
+		err := env.ParseWithOptions(&cfg, envo)
+		if err != nil {
 			return cfg, fmt.Errorf("failed to parse environment: %w", err)
 		}
 

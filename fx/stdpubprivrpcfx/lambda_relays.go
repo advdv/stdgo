@@ -27,6 +27,13 @@ func ProvideLambdaRelay[C, E any](
 	)
 }
 
+// LambdaRelay adds a http endpoint that decodes a json object and calls the system service. This is used
+// to let the service handle lambda calls.
+type LambdaRelay struct {
+	Slug                       string
+	CreateHandlerFromSysClient func(any) bhttp.HandlerFunc[context.Context]
+}
+
 // NewLambdaRelay inits a lambda relay definition.
 func NewLambdaRelay[C, E any](slug string, handler LambdaRelayHandler[C, E]) *LambdaRelay {
 	return &LambdaRelay{
@@ -34,7 +41,7 @@ func NewLambdaRelay[C, E any](slug string, handler LambdaRelayHandler[C, E]) *La
 		Slug: slug,
 		// create a bhttp handler that decodes into type E (a lambda event type).
 		CreateHandlerFromSysClient: func(sys any) bhttp.HandlerFunc[context.Context] {
-			c, ok := sys.(C)
+			c, ok := sys.(C) //nolint:varnamelen // c is the typed system client
 			if !ok {
 				// we do it at runtime because a type mismatch causes very hard to debug issues of
 				// relays simply not appearing.
@@ -47,7 +54,9 @@ func NewLambdaRelay[C, E any](slug string, handler LambdaRelayHandler[C, E]) *La
 			// for every request, invoke the actual relay handler with the system client.
 			return func(ctx context.Context, w bhttp.ResponseWriter, r *http.Request) error {
 				var ev E
-				if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+
+				err := json.NewDecoder(r.Body).Decode(&ev)
+				if err != nil {
 					if errors.Is(err, io.EOF) {
 						return bhttp.NewError(bhttp.CodeBadRequest, errors.New("no request body"))
 					}
@@ -66,11 +75,5 @@ func NewLambdaRelay[C, E any](slug string, handler LambdaRelayHandler[C, E]) *La
 	}
 }
 
-// LambdaRelay adds a http endpoint that decodes a json object and calls the system service. This is used
-// to let the service handle lambda calls.
-type LambdaRelay struct {
-	Slug                       string
-	CreateHandlerFromSysClient func(any) bhttp.HandlerFunc[context.Context]
-}
-
+// LambdaRelayHandler is a function that handles a lambda relay event.
 type LambdaRelayHandler[C, E any] func(ctx context.Context, ev E, sys C) error

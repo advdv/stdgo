@@ -46,9 +46,11 @@ func TestTxRawSQLQuery(t *testing.T) {
 
 	res, err := q.QueryContext(ctx, `select 42`)
 	require.NoError(t, err)
+
 	defer res.Close()
 
 	var v int
+
 	require.True(t, res.Next())
 	require.NoError(t, res.Scan(&v))
 	require.NoError(t, res.Err())
@@ -106,6 +108,7 @@ func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
 
 func TestBeginHook(t *testing.T) {
 	var called bool
+
 	ctx := setup1(t)
 	tx := setupTx(t, ctx, 1, stdent.BeginHook(func(
 		ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier,
@@ -126,7 +129,9 @@ func TestBeginHook(t *testing.T) {
 
 func setup1(tb testing.TB, timeout ...time.Duration) context.Context {
 	var ctx context.Context
+
 	var cancel func()
+
 	if len(timeout) > 0 {
 		ctx, cancel = context.WithTimeout(tb.Context(), timeout[0])
 	} else {

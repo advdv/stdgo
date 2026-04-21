@@ -13,6 +13,7 @@ import (
 // an fx.In that is build by composing.
 type testConfigProviderParams struct {
 	Params
+
 	Migrator TestMigrator
 }
 

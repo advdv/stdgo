@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// DefaultWorkerInterceptor implements cross-cutting concerns for worker execution.
 type DefaultWorkerInterceptor struct {
 	interceptor.InterceptorBase
 
@@ -37,7 +38,7 @@ func NewDefaultWorkerInterceptor(
 
 // InterceptWorkflow intercepts workflows.
 func (w *DefaultWorkerInterceptor) InterceptWorkflow(
-	ctx workflow.Context, next interceptor.WorkflowInboundInterceptor,
+	_ workflow.Context, next interceptor.WorkflowInboundInterceptor,
 ) interceptor.WorkflowInboundInterceptor {
 	i := &workflowInboundInterceptor{validator: w.validator}
 	i.Next = next
@@ -46,7 +47,7 @@ func (w *DefaultWorkerInterceptor) InterceptWorkflow(
 
 // InterceptActivity intercepts activities.
 func (w *DefaultWorkerInterceptor) InterceptActivity(
-	ctx context.Context, next interceptor.ActivityInboundInterceptor,
+	_ context.Context, next interceptor.ActivityInboundInterceptor,
 ) interceptor.ActivityInboundInterceptor {
 	i := &activityInboundInterceptor{validator: w.validator, logs: w.logs.Named("actvity")}
 	i.Next = next

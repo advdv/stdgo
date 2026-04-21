@@ -1,0 +1,20 @@
+edition = "2023";
+
+package fx.stdcrpcauthfx.internal.v1;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  string required_permission = 50000;
+}
+
+service SystemService {
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (fx.stdcrpcauthfx.internal.v1.required_permission) = "read";
+  }
+}
+
+message WhoAmIRequest {}
+
+message WhoAmIResponse {}

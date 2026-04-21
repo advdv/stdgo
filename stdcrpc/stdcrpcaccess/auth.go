@@ -55,7 +55,7 @@ func New[T any](
 	authBackendIssuer, signingIssuer string,
 	extraValidators []jwt.Validator,
 ) *AccessControl[T] {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // cancel is stored and called on Stop
 	act := &AccessControl[T]{
 		logic:           logic,
 		stop:            cancel,
@@ -113,6 +113,7 @@ func (ac *AccessControl[T]) Close(context.Context) error { ac.stop(); return nil
 // checkAuthN implements the core checkAuthN logic.
 func (ac *AccessControl[T]) checkAuthN(ctx context.Context, req *http.Request) (any, error) {
 	logs := stdctx.Log(ctx)
+
 	accessToken, ok := authn.BearerToken(req)
 	if !ok {
 		info, allow := ac.logic.InitAsAnonymous(ctx, req)
@@ -214,6 +215,7 @@ func (ac *AccessControl[T]) checkAuthZ(
 	return nil
 }
 
+// Wrap wraps the given handler with authentication and authorization middleware.
 func (ac *AccessControl[T]) Wrap(next http.Handler) http.Handler {
 	// create a small middleware that transforms from the authn middleware value into our own type.
 	inner := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

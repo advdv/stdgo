@@ -21,8 +21,9 @@ import (
 
 func TestSetup(t *testing.T) {
 	t.Parallel()
+
 	var obs *observer.ObservedLogs
-	ctx, ac := setup(t, nil, &obs)
+	ctx, ac, _ := setup(t, nil, &obs)
 	require.NotNil(t, ctx)
 	require.NotNil(t, ac)
 }
@@ -30,6 +31,7 @@ func TestSetup(t *testing.T) {
 func setup(tb testing.TB, anonWhitelist []string, more ...any) (
 	ctx context.Context,
 	ac *stdauthnfx.AccessControl,
+	accessToken string,
 ) {
 	var deps struct {
 		fx.In
@@ -37,16 +39,18 @@ func setup(tb testing.TB, anonWhitelist []string, more ...any) (
 		AccessControl *stdauthnfx.AccessControl
 	}
 
+	jwksURL, accessToken := insecureaccesstools.NewJWKSServer(tb)
+
 	env := map[string]string{
 		// base64 encoded key for signing (well-known)
 		"STDAUTHN_SIGNING_KEY_SET_BASE64": base64.StdEncoding.EncodeToString(insecureaccesstools.WellKnownJWKS1),
 		"STDAUTHN_SIGNING_KEY_ID":         insecureaccesstools.WellKnownJWKS1KeyID,
-		// the endpoint from which to fetch the jwks for validation access tokens.
-		"STDAUTHN_TOKEN_VALIDATION_JWKS_ENDPOINT": "https://id-dev.sterndesk.com/.well-known/jwks.json",
+		// the endpoint from which to fetch the jwks for validation access tokens (local test server).
+		"STDAUTHN_TOKEN_VALIDATION_JWKS_ENDPOINT": jwksURL,
 		// the issuer for access tokens used in testing.
-		"STDAUTHN_TOKEN_ISSUER": "https://id-dev.sterndesk.com/",
+		"STDAUTHN_TOKEN_ISSUER": insecureaccesstools.TestAccessTokenIssuer,
 		// the audience for access tokens used in audience.
-		"STDAUTHN_TOKEN_AUDIENCE": "basewarp-recode-api",
+		"STDAUTHN_TOKEN_AUDIENCE": insecureaccesstools.TestAccessTokenAudience,
 		// set a fixed wall clock as far as access control is concerned (for making test tokens forever usable).
 		"STDAUTHN_FIXED_WALL_CLOCK_TIMESTAMP": "1760816072",
 		// anonymous access whitelist
@@ -67,5 +71,5 @@ func setup(tb testing.TB, anonWhitelist []string, more ...any) (
 	ctx = tb.Context()
 	ctx = stdctx.WithLogger(ctx, deps.Logger)
 
-	return ctx, deps.AccessControl
+	return ctx, deps.AccessControl, accessToken
 }

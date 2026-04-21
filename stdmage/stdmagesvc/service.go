@@ -1,3 +1,4 @@
+// Package stdmagesvc provides mage targets for service deployment and management.
 package stdmagesvc
 
 import (
@@ -16,7 +17,6 @@ var (
 	_awsProfile         string
 	_awsRegion          string
 	_registry           string
-	_stackName          string
 	_exportPrefix       string
 	_composeProjectName string
 	_dockerImagePrefix  string
@@ -29,7 +29,7 @@ func Init(
 	awsProfile string,
 	awsRegion string,
 	registry string,
-	stackName string,
+	_ string, // stackName (unused)
 	exportPrefix string,
 	composeProbjectName string,
 	dockerImagePrefix string,
@@ -40,7 +40,6 @@ func Init(
 	_awsProfile = awsProfile
 	_awsRegion = awsRegion
 	_registry = registry
-	_stackName = stackName
 	_exportPrefix = exportPrefix
 	_composeProjectName = composeProbjectName
 	_dockerImagePrefix = dockerImagePrefix
@@ -48,7 +47,7 @@ func Init(
 	_deploymentIdents = deploymentIdents
 }
 
-// DockerLogin logs docker into ther registry.
+// DockerLogin logs docker into the registry.
 func DockerLogin() error {
 	if err := sh.Run("bash", "-c",
 		`aws ecr get-login-password --profile `+_awsProfile+` --region `+_awsRegion+` |`+
@@ -99,6 +98,7 @@ func push(deploymentIdent, serviceIdent string, doLogin bool) error {
 	{
 		// main image retagging and push
 		mainDockerImageToReTag := fmt.Sprintf("%s-%s%s", _composeProjectName, _dockerImagePrefix, serviceIdent)
+
 		mainImageFinalTag := fmt.Sprintf("%s/%s:%s", _registry, service.RepositoryName, service.MainImageTag)
 		if err := sh.Run("docker", "tag",
 			mainDockerImageToReTag, mainImageFinalTag); err != nil {
@@ -269,7 +269,7 @@ func ExecCommandInTask(deploymentIdent, serviceIdent, command, containerName str
 	}
 
 	var tasks shape
-	if err := json.Unmarshal([]byte(exportData), &tasks); err != nil {
+	if err := json.Unmarshal([]byte(exportData), &tasks); err != nil { //nolint:musttag // local anonymous struct
 		return fmt.Errorf("unmarshal task data: %w", err)
 	}
 
@@ -316,6 +316,7 @@ type Service struct {
 	Lambdas        []*Lambda
 }
 
+// Lambda describes a Lambda function associated with a service.
 type Lambda struct {
 	FunctionName string
 }
@@ -346,11 +347,12 @@ func ReadDeploymentInfo() (Deployments, error) {
 	}
 
 	var exports shape
-	if err := json.Unmarshal([]byte(exportData), &exports); err != nil {
+	if err := json.Unmarshal([]byte(exportData), &exports); err != nil { //nolint:musttag // local anonymous struct
 		return nil, fmt.Errorf("unmarshal export data: %w", err)
 	}
 
 	deployments := make(Deployments)
+
 	for _, export := range exports.Exports {
 		_, name, found := strings.Cut(export.Name, _exportPrefix)
 		if !found {

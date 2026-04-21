@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// prefix to recognize our API keys.
+	// APIKeyPrefix is the prefix to recognize our API keys.
 	APIKeyPrefix = "bwak_"
 )
 
@@ -54,6 +54,7 @@ func (ac *AccessControl) BuildAndSignAPIKey(acc *stdauthnfxv1.Access) (string, e
 
 func (ac *AccessControl) authenticateAPIKey(ctx context.Context, apiKey string) (context.Context, error) {
 	noSuffixAPIKey := strings.TrimPrefix(apiKey, APIKeyPrefix)
+
 	apiKeyb, err := base62.StdEncoding.DecodeString(noSuffixAPIKey)
 	if err != nil {
 		return ctx, errors.Errorf("decode api key: %w", err)

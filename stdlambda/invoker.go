@@ -48,8 +48,9 @@ func NewProtoInvoker[I, O any, IP interface {
 func (inv ProtoInvoker[I, O, IP, OP]) Invoke(ctx context.Context, input IP) (output OP, err error) {
 	output = new(O)
 	boundMarshalf := func() ([]byte, error) { return protojson.Marshal(input) }
+
 	boundUnmarshalf := func(data []byte) error { return protojson.Unmarshal(data, output) }
-	if err := inv.baseInvoker.invoke(ctx, boundMarshalf, boundUnmarshalf); err != nil {
+	if err := inv.invoke(ctx, boundMarshalf, boundUnmarshalf); err != nil {
 		return nil, err
 	}
 
@@ -70,8 +71,9 @@ func NewInvoker[I, O any](lambdaClient Lambda, functionName string) *Invoker[I, 
 func (inv Invoker[I, O]) Invoke(ctx context.Context, input I) (output *O, err error) {
 	output = new(O)
 	boundMarshalf := func() ([]byte, error) { return json.Marshal(input) }
+
 	boundUnmarshalf := func(data []byte) error { return json.Unmarshal(data, output) }
-	if err := inv.baseInvoker.invoke(ctx, boundMarshalf, boundUnmarshalf); err != nil {
+	if err := inv.invoke(ctx, boundMarshalf, boundUnmarshalf); err != nil {
 		return nil, err
 	}
 

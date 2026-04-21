@@ -21,6 +21,7 @@ func Execute(ctx context.Context, stdin io.Reader, dir, program string, args ...
 	cmd.Dir = dir
 	cmd.Stdin = stdin
 	cmd.Stdout = &stdout
+
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return "", err

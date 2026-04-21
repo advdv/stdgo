@@ -30,6 +30,7 @@ type (
 	// Params describe the main parameters for providing components.
 	Params struct {
 		fx.In
+
 		Config    Config
 		AwsConfig aws.Config `optional:"true"`
 		Logs      *zap.Logger
@@ -38,6 +39,7 @@ type (
 	// Result describe the main components provided for this module.
 	Result struct {
 		fx.Out
+
 		PoolConfig *pgxpool.Config
 	}
 )
@@ -51,8 +53,9 @@ func New(params Params) (r Result, err error) {
 	}
 
 	// we log notices from the database so debugging on the Go side is easier
-	pcfg.ConnConfig.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
+	pcfg.ConnConfig.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) { //nolint:varnamelen // n is clear in context
 		level := zapcore.DebugLevel
+
 		switch strings.ToLower(n.SeverityUnlocalized) {
 		case "info":
 			level = zapcore.InfoLevel
@@ -190,6 +193,7 @@ func withDerivedPools[DBT any](drv Driver[DBT], mainName string, names ...string
 				}
 
 				logs.Info("initialized derived pool", zap.String("name", name))
+
 				return derived, nil
 			},
 				fx.ParamTags(`name:"`+mainName+`"`, `name:"`+name+`" optional:"true"`),

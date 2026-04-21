@@ -24,7 +24,6 @@ func Test[T stdent.Tx](
 		// in case we're testing errors the commit is reached but it will fail with an expected error of
 		// pgx.ErrTxCommitRollback. Outside of testing the 'fn' would return an error to check so we don't
 		// call commit but t doesn't offer a way for us to check if the test has failed.
-
 		tb.Fatalf("transact: %v", err)
 	}
 }

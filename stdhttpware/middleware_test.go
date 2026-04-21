@@ -1,6 +1,7 @@
 package stdhttpware_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func TestCacheMiddleware(t *testing.T) {
 		t.Parallel()
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
 		_, chain := setup(&spyHandler{})
 		chain.ServeHTTP(rec, req)
@@ -60,7 +61,7 @@ func TestCacheMiddleware(t *testing.T) {
 		}}
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
 		_, chain := setup(handler)
 		chain.ServeHTTP(rec, req)
@@ -78,7 +79,7 @@ func TestLoggerMiddleware(t *testing.T) {
 		logs, chain := setup(handler)
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/foo", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/foo", nil)
 
 		chain.ServeHTTP(rec, req)
 
@@ -93,7 +94,7 @@ func TestLoggerMiddleware(t *testing.T) {
 		logs, chain := setup(handler)
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 		req.Header.Set("User-Agent", "ELB-HealthChecker/2.0")
 		req.RemoteAddr = "10.0.0.12:1234"
 
@@ -112,7 +113,7 @@ func TestRecoverMiddleware(t *testing.T) {
 		panicHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(boom) })
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
 		logs, chain := setup(panicHandler)
 		chain.ServeHTTP(rec, req)
@@ -126,7 +127,7 @@ func TestRecoverMiddleware(t *testing.T) {
 		panicHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("upgrade") })
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		req.Header.Set("Connection", "Upgrade")
 
 		_, chain := setup(panicHandler)
@@ -143,7 +144,7 @@ func TestRequestIDPropagation(t *testing.T) {
 	_, chain := setup(handler)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 
 	chain.ServeHTTP(rec, req)
 

@@ -18,6 +18,7 @@ type Bar struct{}
 
 type Params struct {
 	fx.In
+
 	LC fx.Lifecycle
 	SD fx.Shutdowner
 
@@ -27,6 +28,7 @@ type Params struct {
 
 type Result struct {
 	fx.Out
+
 	Bar Bar
 }
 
@@ -38,6 +40,7 @@ var Module2 = stdfx.NamedNoProvideZapEnvCfgModule[Config]("foo", "a", fx.Provide
 
 func TestZapCfgModule(t *testing.T) {
 	var bar Bar
+
 	app := fxtest.New(t, Module1, fx.Provide(zap.NewExample), fx.Populate(&bar), stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	app.RequireStop()
@@ -48,6 +51,7 @@ func TestNamedZapCfgModule(t *testing.T) {
 		fx.In
 		Cfg Config `name:"a"`
 	}
+
 	app := fxtest.New(t, Module2, fx.Provide(zap.NewExample), fx.Populate(&deps), stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	app.RequireStop()

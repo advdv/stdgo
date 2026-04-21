@@ -11,9 +11,13 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// DriverOption configures a Driver.
 type DriverOption func(*Driver)
 
-type BeginHookFunc = func(ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier) (*strings.Builder, error)
+// BeginHookFunc is a function that is called right when the transaction has been setup.
+type BeginHookFunc = func(
+	ctx context.Context, sql *strings.Builder, tx entdialect.ExecQuerier,
+) (*strings.Builder, error)
 
 // TestForMaxQueryPlanCosts will enable EXPLAIN on every query that is executed with
 // the driver and fail when the cost of the resulting query is above the maximum. Together
@@ -144,8 +148,8 @@ func (d Driver) setupTx(ctx context.Context, tx entdialect.Tx) (err error) {
 	// if the context has a deadline we limit the transaction to that timeout.
 	dl, ok := ctx.Deadline()
 	if ok {
-		sql.WriteString(fmt.Sprintf(`SET LOCAL transaction_timeout = %d;`,
-			(time.Until(dl) + d.timeoutExtension).Milliseconds()))
+		fmt.Fprintf(sql, `SET LOCAL transaction_timeout = %d;`,
+			(time.Until(dl) + d.timeoutExtension).Milliseconds())
 	}
 
 	// if we want to discourage sequential scans

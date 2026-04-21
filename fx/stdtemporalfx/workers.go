@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// ProvideRegistration provides a worker registration as an fx dependency.
 func ProvideRegistration[W, A any](
 	queueName string,
 	regFn func(worker worker.Worker, wf W, act A),
@@ -27,6 +28,7 @@ func ProvideRegistration[W, A any](
 	)
 }
 
+// ProvideActivityRegistration provides an activity registration as an fx dependency.
 func ProvideActivityRegistration[A any](
 	queueName string,
 	regFn func(worker worker.Worker, act A),
@@ -44,6 +46,7 @@ func ProvideActivityRegistration[A any](
 	)
 }
 
+// ProvideWorkflowRegistration provides a workflow registration as an fx dependency.
 func ProvideWorkflowRegistration[W any](
 	queueName string,
 	regFn func(worker worker.Worker, wf W),
@@ -61,18 +64,18 @@ func ProvideWorkflowRegistration[W any](
 	)
 }
 
+// Registration describes registering of workflow and activities with a worker.
+type Registration struct {
+	regFn     func(w worker.Worker)
+	queueName string
+}
+
 // NewRegistration inits a registration.
 func NewRegistration(queueName string, regFn func(worker worker.Worker)) *Registration {
 	return &Registration{
 		queueName: queueName,
 		regFn:     regFn,
 	}
-}
-
-// Registration describes registering of workflow and activities with a worker.
-type Registration struct {
-	regFn     func(w worker.Worker)
-	queueName string
 }
 
 // Workers represent the set of Temporal workers.
@@ -102,9 +105,9 @@ func NewWorkers(par struct {
 		interceptors:  par.Interceptors,
 	}
 
-	// if the workers are disabled we do not start/stop them. This is usefull if the same
+	// if the workers are disabled we do not start/stop them. This is useful if the same
 	// code as the service is run in a Lambda, or if the workers are started in a separate process.
-	if w.temporal.cfg.DisableWorkers == true {
+	if w.temporal.cfg.DisableWorkers {
 		w.logs.Info("workers are disabled, do not start/stop them")
 		return w, nil
 	}
@@ -114,7 +117,7 @@ func NewWorkers(par struct {
 	return w, nil
 }
 
-// Register registeres a Temporal worker for the registration.
+// Register registers a Temporal worker for the registration.
 func (w *Workers) Register(registration *Registration) error {
 	logs := w.logs.Named(registration.queueName)
 

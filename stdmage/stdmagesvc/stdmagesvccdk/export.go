@@ -1,6 +1,8 @@
+// Package stdmagesvccdk provides CDK export utilities for service lambdas.
 package stdmagesvccdk
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -11,10 +13,12 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
+// ServiceLambda represents a lambda function within a service.
 type ServiceLambda interface {
 	FunctionName() *string
 }
 
+// Service represents a deployable service with lambdas.
 type Service[L ServiceLambda] interface {
 	ServiceIdent() string
 	RepositoryName() *string
@@ -23,6 +27,7 @@ type Service[L ServiceLambda] interface {
 	Lambdas() map[string]L
 }
 
+// ExportServiceInfo exports CDK CloudFormation outputs for a service and its lambdas.
 func ExportServiceInfo[L ServiceLambda](scope constructs.Construct, deploymentIdent string, svc Service[L]) {
 	scope = constructs.NewConstruct(scope, jsii.Sprintf("ServiceInfo%s", strcase.ToCamel(svc.ServiceIdent())))
 
@@ -48,9 +53,11 @@ func ExportServiceInfo[L ServiceLambda](scope constructs.Construct, deploymentId
 
 	for _, lambdaIdent := range idents {
 		lambda := lambdas[lambdaIdent]
+		exportName := fmt.Sprintf("BwSvc:%s:%s:lambda:%s",
+			deploymentIdent, svc.ServiceIdent(), strcase.ToKebab(lambdaIdent))
 		awscdk.NewCfnOutput(scope, jsii.String("ServiceLambdaNameOutput"+lambdaIdent),
 			&awscdk.CfnOutputProps{
-				ExportName: jsii.Sprintf("BwSvc:%s:%s:lambda:%s", deploymentIdent, svc.ServiceIdent(), strcase.ToKebab(lambdaIdent)),
+				ExportName: jsii.String(exportName),
 				Value:      lambda.FunctionName(),
 			})
 	}

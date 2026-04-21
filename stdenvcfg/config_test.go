@@ -45,6 +45,7 @@ func TestConfigProvideNamed(t *testing.T) {
 
 	var deps struct {
 		fx.In
+
 		CfgA Conf1 `name:"ab"`
 		CfgB Conf1 `name:"bb"`
 	}

@@ -12,6 +12,7 @@ import (
 
 func TestNew(t *testing.T) {
 	var acfg aws.Config
+
 	app := fxtest.New(t, stdawsfx.Provide(), fx.Populate(&acfg), stdenvcfg.ProvideOSEnvironment())
 	app.RequireStart()
 	t.Cleanup(app.RequireStop)

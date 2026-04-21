@@ -21,6 +21,7 @@ type SecretIDer interface {
 // struct that implements the interface.
 type JSONSecretParams[IDR SecretIDer] struct {
 	fx.In
+
 	Config IDR
 	Cache  *secretcache.Cache
 }

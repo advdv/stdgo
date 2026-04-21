@@ -20,6 +20,14 @@ type TestAuthBackend struct {
 	https *httptest.Server
 }
 
+// NewTestAuthBackend starts a server for testing that serves the key set.
+func NewTestAuthBackend() *TestAuthBackend {
+	return &TestAuthBackend{httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(fixedJwks1Data)
+	}))}
+}
+
+// JWKSEndpoint returns the test JWKS endpoint URL.
 func (ap TestAuthBackend) JWKSEndpoint() string {
 	return ap.https.URL
 }
@@ -36,13 +44,6 @@ func WithTestAuthBackend() fx.Option {
 			return tap
 		}),
 	)
-}
-
-// NewTestAuthBackend starts a server for testing that serves the key set.
-func NewTestAuthBackend() *TestAuthBackend {
-	return &TestAuthBackend{httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(fixedJwks1Data)
-	}))}
 }
 
 // SignTestToken signs a valid JWT against a well-known private key for testing.

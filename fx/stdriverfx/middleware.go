@@ -13,6 +13,7 @@ import (
 
 type ctxKey string
 
+// Log returns the work logger from the context.
 func Log(ctx context.Context) *zap.Logger {
 	logs, ok := ctx.Value(ctxKey("logger")).(*zap.Logger)
 	if !ok {
@@ -30,6 +31,7 @@ func loggerMiddleware() rivertype.Middleware {
 			workSyncWriter,
 			zap.DebugLevel)
 		logs := zap.New(zapcore.NewTee(workCore, stdctx.Log(ctx).Core()))
+
 		return context.WithValue(ctx, ctxKey("logger"), logs)
 	}, nil)
 }

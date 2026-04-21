@@ -34,6 +34,7 @@ func buildTestToken(tb testing.TB, primaryIdentity string, perms ...string) jwt.
 		Issuer("auth-backend").
 		Audience([]string{"access-test"}).Build()
 	require.NoError(tb, err)
+
 	return tok
 }
 
@@ -135,7 +136,7 @@ func TestCheckAuth(t *testing.T) {
 				"self-sign",
 				nil)
 
-			rec, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rec, req := httptest.NewRecorder(), httptest.NewRequestWithContext(context.Background(), http.MethodGet, tt.path, nil)
 			tt.setHdr(req.Header)
 			req = req.WithContext(stdctx.WithLogger(ctx, logs))
 

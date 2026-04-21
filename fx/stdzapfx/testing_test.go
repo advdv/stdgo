@@ -14,6 +14,7 @@ import (
 
 func TestTestingLogger(t *testing.T) {
 	var logs *zap.Logger
+
 	var obs *observer.ObservedLogs
 
 	app := fxtest.New(t,
