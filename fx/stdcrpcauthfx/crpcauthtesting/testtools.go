@@ -35,7 +35,7 @@ type TokenSigner struct {
 	audience string
 }
 
-// Sign creates a signed JWT with the given subject and scopes.
+// Sign creates a signed JWT with the given subject and scopes (via the "scope" claim).
 func (s *TokenSigner) Sign(tb testing.TB, subject string, scopes []string) string {
 	tb.Helper()
 
@@ -46,6 +46,32 @@ func (s *TokenSigner) Sign(tb testing.TB, subject string, scopes []string) strin
 		IssuedAt(TestClockTime.Add(-time.Minute)).
 		Expiration(TestClockTime.Add(24*time.Hour)).
 		Claim("scope", strings.Join(scopes, " ")).
+		Build()
+	if err != nil {
+		tb.Fatalf("testtools: build jwt: %v", err)
+	}
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), s.key))
+	if err != nil {
+		tb.Fatalf("testtools: sign jwt: %v", err)
+	}
+
+	return string(signed)
+}
+
+// SignWithPermissions creates a signed JWT with the given subject and permissions
+// (via the "permissions" claim as a JSON array, matching the Auth0 SPA token format).
+func (s *TokenSigner) SignWithPermissions(tb testing.TB, subject string, permissions []string) string {
+	tb.Helper()
+
+	tok, err := jwt.NewBuilder().
+		Issuer(s.issuer).
+		Audience([]string{s.audience}).
+		Subject(subject).
+		IssuedAt(TestClockTime.Add(-time.Minute)).
+		Expiration(TestClockTime.Add(24*time.Hour)).
+		Claim("scope", "openid profile email").
+		Claim("permissions", permissions).
 		Build()
 	if err != nil {
 		tb.Fatalf("testtools: build jwt: %v", err)

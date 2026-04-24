@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/advdv/stdgo/fx/stdcrpcauthfx"
+	"github.com/advdv/stdgo/fx/stdcrpcauthfx/crpcauthtesting"
 	internalv1 "github.com/advdv/stdgo/fx/stdcrpcauthfx/internal/v1"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdenvcfg"
@@ -147,6 +148,87 @@ func TestWrapNonProcedurePassesThrough(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func setupLocal(tb testing.TB) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenSigner) {
+	tb.Helper()
+
+	serverURL, signer := crpcauthtesting.NewJWKSServer(tb)
+
+	var deps struct {
+		fx.In
+
+		AccessControl *stdcrpcauthfx.AccessControl
+	}
+
+	app := fxtest.New(tb,
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(tb),
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
+			"TOKEN_ISSUER":   serverURL,
+			"TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
+		}),
+		fx.Supply(fx.Annotate(
+			crpcauthtesting.Clock(),
+			fx.As(new(jwt.Clock)),
+		)),
+		stdcrpcauthfx.Provide(),
+		stdcrpcauthfx.ProtoExtensionScope(internalv1.E_RequiredPermission),
+		fx.Populate(&deps),
+	)
+	app.RequireStart()
+	tb.Cleanup(app.RequireStop)
+
+	return deps.AccessControl, signer
+}
+
+func TestWrapPermissionsClaim(t *testing.T) {
+	t.Parallel()
+
+	ac, signer := setupLocal(t)
+	token := signer.SignWithPermissions(t, "auth0|user123", []string{"system:read"})
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := stdcrpcauthfx.ClaimsFromContext(r.Context())
+		fmt.Fprintf(w, "sub=%s scopes=%v", claims.Subject, claims.Scopes)
+	})
+
+	handler := ac.Wrap(inner)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		"/fx.stdcrpcauthfx.internal.v1.SystemService/WhoAmI", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "sub=auth0|user123")
+	require.Contains(t, rec.Body.String(), "system:read")
+}
+
+func TestWrapPermissionsClaimInsufficientScope(t *testing.T) {
+	t.Parallel()
+
+	ac, signer := setupLocal(t)
+	token := signer.SignWithPermissions(t, "auth0|user123", []string{"other:write"})
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := ac.Wrap(inner)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		"/fx.stdcrpcauthfx.internal.v1.SystemService/WhoAmI", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestClaimsFromContextEmpty(t *testing.T) {

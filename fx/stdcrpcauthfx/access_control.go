@@ -212,6 +212,17 @@ func (ac *AccessControl) authenticate(_ context.Context, req *http.Request) (any
 	_ = tok.Get("scope", &scopeStr)
 
 	scopes := strings.Fields(scopeStr)
+
+	var rawPermissions interface{}
+	if err := tok.Get("permissions", &rawPermissions); err == nil {
+		if perms, ok := rawPermissions.([]interface{}); ok {
+			for _, p := range perms {
+				if s, ok := p.(string); ok {
+					scopes = append(scopes, s)
+				}
+			}
+		}
+	}
 	sub, _ := tok.Subject()
 
 	ac.logs.Info("authenticated request",
