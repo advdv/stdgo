@@ -14,6 +14,7 @@ import (
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/samber/lo"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -223,6 +224,8 @@ func (ac *AccessControl) authenticate(_ context.Context, req *http.Request) (any
 			}
 		}
 	}
+	scopes = lo.Uniq(scopes)
+
 	sub, _ := tok.Subject()
 
 	ac.logs.Info("authenticated request",

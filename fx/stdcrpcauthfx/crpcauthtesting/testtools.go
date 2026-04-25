@@ -85,6 +85,35 @@ func (s *TokenSigner) SignWithPermissions(tb testing.TB, subject string, permiss
 	return string(signed)
 }
 
+// SignWithScopeAndPermissions creates a signed JWT with both the "scope" claim (space-separated)
+// and the "permissions" claim (JSON array), matching the Auth0 m2m token format where the same
+// scope can appear in both claims.
+func (s *TokenSigner) SignWithScopeAndPermissions(
+	tb testing.TB, subject string, scopes []string, permissions []string,
+) string {
+	tb.Helper()
+
+	tok, err := jwt.NewBuilder().
+		Issuer(s.issuer).
+		Audience([]string{s.audience}).
+		Subject(subject).
+		IssuedAt(TestClockTime.Add(-time.Minute)).
+		Expiration(TestClockTime.Add(24*time.Hour)).
+		Claim("scope", strings.Join(scopes, " ")).
+		Claim("permissions", permissions).
+		Build()
+	if err != nil {
+		tb.Fatalf("testtools: build jwt: %v", err)
+	}
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), s.key))
+	if err != nil {
+		tb.Fatalf("testtools: sign jwt: %v", err)
+	}
+
+	return string(signed)
+}
+
 // Clock returns a jwt.Clock fixed to TestClockTime, suitable for fx.Supply.
 func Clock() jwt.Clock {
 	return jwt.ClockFunc(func() time.Time { return TestClockTime })

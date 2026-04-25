@@ -231,6 +231,38 @@ func TestWrapPermissionsClaimInsufficientScope(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+func TestWrapM2MTokenNoDuplicateScopes(t *testing.T) {
+	t.Parallel()
+
+	ac, signer := setupLocal(t)
+	// Simulates an Auth0 m2m token where the same scope appears in both
+	// the "scope" string claim and the "permissions" array claim.
+	token := signer.SignWithScopeAndPermissions(t,
+		"227e0I19bqG0IwK6QAWHWb0xOvLJnMmV@clients",
+		[]string{"system:read"},
+		[]string{"system:read"})
+
+	var captured stdcrpcauthfx.Claims
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = stdcrpcauthfx.ClaimsFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := ac.Wrap(inner)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		"/fx.stdcrpcauthfx.internal.v1.SystemService/WhoAmI", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"system:read"}, captured.Scopes,
+		"scope appearing in both 'scope' and 'permissions' must not be duplicated")
+}
+
 func TestClaimsFromContextEmpty(t *testing.T) {
 	t.Parallel()
 
