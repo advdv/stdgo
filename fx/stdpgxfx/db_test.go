@@ -236,6 +236,93 @@ func TestRoPoolAutoRewritesAuroraClusterHost(t *testing.T) {
 		instPcfg.ConnConfig.Host, "ro pool must not rewrite non-cluster RDS hosts")
 }
 
+func TestPerPoolHostOverride(t *testing.T) {
+	const (
+		fraHost      = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
+		overrideHost = "mycluster.cluster-ro-def456.ap-southeast-1.rds.amazonaws.com"
+	)
+
+	pcfg, err := pgxpool.ParseConfig("postgresql://app@" + fraHost + ":5432/db")
+	require.NoError(t, err)
+
+	hosts := map[string]string{"ro": overrideHost}
+
+	// rw pool: no override registered → returns false, host unchanged.
+	rwCfg := pcfg.Copy()
+	applied := stdpgxfx.ApplyPoolHostOverride("rw", rwCfg, hosts, zap.NewNop())
+	require.False(t, applied, "rw should not have an override applied")
+	require.Equal(t, fraHost, rwCfg.ConnConfig.Host)
+
+	// ro pool: override applied, host swapped, returns true.
+	roCfg := pcfg.Copy()
+	applied = stdpgxfx.ApplyPoolHostOverride("ro", roCfg, hosts, zap.NewNop())
+	require.True(t, applied, "ro should have its override applied")
+	require.Equal(t, overrideHost, roCfg.ConnConfig.Host)
+}
+
+func TestPerPoolHostOverrideEmptyValueIsIgnored(t *testing.T) {
+	const fraHost = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
+
+	pcfg, err := pgxpool.ParseConfig("postgresql://app@" + fraHost + ":5432/db")
+	require.NoError(t, err)
+
+	// An empty-string value for the pool name should be treated as "no override".
+	applied := stdpgxfx.ApplyPoolHostOverride("ro", pcfg, map[string]string{"ro": ""}, zap.NewNop())
+	require.False(t, applied)
+	require.Equal(t, fraHost, pcfg.ConnConfig.Host)
+}
+
+func TestPerPoolHostOverrideViaEnv(t *testing.T) {
+	// End-to-end: STDPGX_HOSTS env var parses, plumbs into Config.Hosts,
+	// reaches newDB, and the resulting *pgxpool.Pool's Config has the
+	// overridden host. We use 127.0.0.1 for the "ro" override (resolves to
+	// the same Postgres as localhost) so pool construction succeeds.
+	var res struct {
+		fx.In
+		RW *pgxpool.Pool `name:"rw"`
+		RO *pgxpool.Pool `name:"ro"`
+	}
+
+	app := fxtest.New(t,
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
+			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
+			"STDPGX_HOSTS":             "ro:127.0.0.1",
+		}),
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
+		fx.Populate(&res))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	require.Equal(t, "localhost", res.RW.Config().ConnConfig.Host,
+		"rw pool should use the main URL host (no override registered)")
+	require.Equal(t, "127.0.0.1", res.RO.Config().ConnConfig.Host,
+		"ro pool should use the STDPGX_HOSTS[ro] override")
+}
+
+func TestPerPoolHostOverrideWinsOverConvention(t *testing.T) {
+	// Drive the same code path newDB hits: try override first; if not applied,
+	// fall through to convention. With override set, the cluster-ro convention
+	// must NOT run.
+	const (
+		fraHost      = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
+		overrideHost = "totally-different-host.example.com"
+	)
+
+	pcfg, err := pgxpool.ParseConfig("postgresql://app@" + fraHost + ":5432/db")
+	require.NoError(t, err)
+
+	hosts := map[string]string{"ro": overrideHost}
+	logger := zap.NewNop()
+
+	if !stdpgxfx.ApplyPoolHostOverride("ro", pcfg, hosts, logger) {
+		stdpgxfx.ApplyPoolHostConventions("ro", pcfg, logger)
+	}
+	require.Equal(t, overrideHost, pcfg.ConnConfig.Host,
+		"override must win over the cluster-ro convention")
+}
+
 func TestProvideWithDeriver(t *testing.T) {
 	_, shared := setup(t)
 

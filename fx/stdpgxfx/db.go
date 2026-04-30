@@ -33,6 +33,20 @@ type Config struct {
 	// non-RDS hostnames (e.g., custom domains, RDS Proxy aliases, the global
 	// writer endpoint) are not supported.
 	IamAuth bool `env:"IAM_AUTH"`
+	// Hosts overrides the host for named pools. Useful for Aurora Global Database
+	// deployments where the secondary region's reader pool should connect to a
+	// local regional reader endpoint while the writer pool stays on the primary
+	// region's cluster endpoint.
+	//
+	// Format: comma-separated <pool>:<host> pairs.
+	//
+	//	STDPGX_HOSTS=ro:mycluster.cluster-ro-def.ap-southeast-1.rds.amazonaws.com
+	//	STDPGX_HOSTS=ro:ro-host.example.com,rw:rw-host.example.com
+	//
+	// An override wins over name-based conventions (i.e., when a pool's host is
+	// overridden, the cluster-ro auto-rewrite is skipped). The IAM signing region
+	// is then derived from the overridden host, so cross-region setups Just Work.
+	Hosts map[string]string `env:"HOSTS"`
 }
 
 type (
@@ -177,21 +191,29 @@ func buildIamAuthToken(
 // newDB is the low-level constructor for turning our config into sql databases. It is
 // called for both the main pool and the derived pools. The pool name is used to
 // apply name-based conventions (e.g., the "ro" pool auto-rewrites Aurora cluster
-// writer endpoints to the corresponding reader endpoint).
+// writer endpoints to the corresponding reader endpoint) and to look up explicit
+// per-pool host overrides from cfg.Hosts.
 func newDB[DBT any](
 	name string,
 	deriver Deriver, // optional
 	lcl fx.Lifecycle,
-	_ Config,
+	cfg Config,
 	pcfg *pgxpool.Config,
 	logs *zap.Logger,
 	drv Driver[DBT],
 ) (DBT, error) {
+	// Always work on a copy of the base config — multiple pools share the same
+	// *pgxpool.Config pointer via fx, and we mutate Host below for conventions
+	// and overrides.
+	pcfg = pcfg.Copy()
 	if deriver != nil {
-		pcfg = deriver(logs, pcfg.Copy())
+		pcfg = deriver(logs, pcfg)
 	}
 
-	ApplyPoolHostConventions(name, pcfg, logs)
+	// Explicit per-pool host overrides win over name-based conventions.
+	if !ApplyPoolHostOverride(name, pcfg, cfg.Hosts, logs) {
+		ApplyPoolHostConventions(name, pcfg, logs)
+	}
 
 	db, err := drv.NewPool(pcfg)
 	if err != nil {
@@ -205,6 +227,25 @@ func newDB[DBT any](
 	})
 
 	return db, nil
+}
+
+// ApplyPoolHostOverride applies an explicit per-pool host override from the
+// given map (typically Config.Hosts) to the given *pgxpool.Config. It returns
+// true if an override was applied (so callers can skip name-based conventions).
+//
+// It is exported so that tests (and other layers that build *pgxpool.Config
+// outside of newDB) can apply the same override logic explicitly.
+func ApplyPoolHostOverride(name string, pcfg *pgxpool.Config, hosts map[string]string, logs *zap.Logger) bool {
+	override, ok := hosts[name]
+	if !ok || override == "" {
+		return false
+	}
+	logs.Info("overriding host for pool",
+		zap.String("name", name),
+		zap.String("base_host", pcfg.ConnConfig.Host),
+		zap.String("new_host", override))
+	pcfg.ConnConfig.Host = override
+	return true
 }
 
 // ApplyPoolHostConventions applies name-based host conventions to a pool's
