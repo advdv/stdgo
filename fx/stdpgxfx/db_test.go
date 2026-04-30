@@ -195,6 +195,47 @@ func TestIamAuthBeforeConnectErrorsOnNonRegionalHost(t *testing.T) {
 	require.ErrorContains(t, err, "could not derive IAM signing region from host")
 }
 
+func TestRoPoolAutoRewritesAuroraClusterHost(t *testing.T) {
+	// Use TestProvide so we don't actually need to connect — pgtestdb's NoopMigrator
+	// gives us a base config we can inspect via Deriver invocations. We simulate
+	// an Aurora cluster MAIN_DATABASE_URL and verify that the derived "ro" pool's
+	// final host has been rewritten cluster- → cluster-ro- by stdpgxfx itself
+	// (i.e., not by any stdenttxfx/stdpgxtxfx deriver).
+	const fraHost = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
+
+	// We cannot easily observe pcfg post-conventions through fx (the pool is
+	// built and conventions applied inside newDB), so we test the conventions
+	// helper directly. This is the same code path newDB hits.
+	pcfg, err := pgxpool.ParseConfig("postgresql://app@" + fraHost + ":5432/db")
+	require.NoError(t, err)
+
+	// Sanity: rw pool name leaves the host alone.
+	rwCfg := pcfg.Copy()
+	stdpgxfx.ApplyPoolHostConventions("rw", rwCfg, zap.NewNop())
+	require.Equal(t, fraHost, rwCfg.ConnConfig.Host, "rw pool must not rewrite host")
+
+	// ro pool name rewrites cluster- → cluster-ro- on RDS hosts.
+	roCfg := pcfg.Copy()
+	stdpgxfx.ApplyPoolHostConventions("ro", roCfg, zap.NewNop())
+	require.Equal(t,
+		"mycluster.cluster-ro-abc123.eu-central-1.rds.amazonaws.com",
+		roCfg.ConnConfig.Host, "ro pool must rewrite cluster- to cluster-ro-")
+
+	// ro pool name does NOT rewrite non-RDS hosts.
+	localPcfg, err := pgxpool.ParseConfig("postgresql://postgres@localhost:5432/postgres")
+	require.NoError(t, err)
+	stdpgxfx.ApplyPoolHostConventions("ro", localPcfg, zap.NewNop())
+	require.Equal(t, "localhost", localPcfg.ConnConfig.Host, "ro pool must not rewrite non-RDS hosts")
+
+	// ro pool name does NOT rewrite RDS hosts that don't look like cluster endpoints.
+	instPcfg, err := pgxpool.ParseConfig("postgresql://app@instance-1.abc123.eu-central-1.rds.amazonaws.com:5432/db")
+	require.NoError(t, err)
+	stdpgxfx.ApplyPoolHostConventions("ro", instPcfg, zap.NewNop())
+	require.Equal(t,
+		"instance-1.abc123.eu-central-1.rds.amazonaws.com",
+		instPcfg.ConnConfig.Host, "ro pool must not rewrite non-cluster RDS hosts")
+}
+
 func TestProvideWithDeriver(t *testing.T) {
 	_, shared := setup(t)
 

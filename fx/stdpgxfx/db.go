@@ -175,8 +175,11 @@ func buildIamAuthToken(
 }
 
 // newDB is the low-level constructor for turning our config into sql databases. It is
-// called for both the main pool and the derived pools.
+// called for both the main pool and the derived pools. The pool name is used to
+// apply name-based conventions (e.g., the "ro" pool auto-rewrites Aurora cluster
+// writer endpoints to the corresponding reader endpoint).
 func newDB[DBT any](
+	name string,
 	deriver Deriver, // optional
 	lcl fx.Lifecycle,
 	_ Config,
@@ -187,6 +190,8 @@ func newDB[DBT any](
 	if deriver != nil {
 		pcfg = deriver(logs, pcfg.Copy())
 	}
+
+	ApplyPoolHostConventions(name, pcfg, logs)
 
 	db, err := drv.NewPool(pcfg)
 	if err != nil {
@@ -202,13 +207,42 @@ func newDB[DBT any](
 	return db, nil
 }
 
+// ApplyPoolHostConventions applies name-based host conventions to a pool's
+// *pgxpool.Config. Currently, the "ro" pool auto-rewrites an Aurora cluster
+// writer endpoint to the corresponding reader endpoint
+// (e.g., "*.cluster-xxx.<region>.rds.amazonaws.com" → "*.cluster-ro-xxx.<region>.rds.amazonaws.com").
+// This runs AFTER any user/framework-supplied Deriver so that the pool's host
+// reflects the routing intent encoded by the pool name.
+//
+// It is exported so that tests (and other layers that build *pgxpool.Config
+// outside of newDB) can apply the same conventions explicitly.
+func ApplyPoolHostConventions(name string, pcfg *pgxpool.Config, logs *zap.Logger) {
+	if name != "ro" {
+		return
+	}
+	host := pcfg.ConnConfig.Host
+	if !strings.HasSuffix(host, ".rds.amazonaws.com") || !strings.Contains(host, ".cluster-") {
+		return
+	}
+	pcfg.ConnConfig.Host = strings.Replace(host, ".cluster-", ".cluster-ro-", 1)
+	logs.Info("derived read-only RDS cluster host",
+		zap.String("new_host", pcfg.ConnConfig.Host),
+		zap.String("base_host", host))
+}
+
 // Provide components as fx dependencies.
 func Provide[DBT any](drv Driver[DBT], mainPoolName string, derivedPoolNames ...string) fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx", New,
 		// for some dynamically created provides are dependant on this.
 		fx.Provide(func() Driver[DBT] { return drv }),
 		// provide the "main" pool
-		fx.Provide(fx.Annotate(newDB[DBT],
+		fx.Provide(fx.Annotate(
+			func(
+				deriver Deriver, lc fx.Lifecycle, cfg Config,
+				pcfg *pgxpool.Config, logs *zap.Logger, drv Driver[DBT],
+			) (DBT, error) {
+				return newDB(mainPoolName, deriver, lc, cfg, pcfg, logs, drv)
+			},
 			fx.ParamTags(`name:"`+mainPoolName+`" optional:"true"`),
 			fx.ResultTags(`name:"`+mainPoolName+`"`))),
 		// provide the "derived" pools (if any)
@@ -237,7 +271,7 @@ func withDerivedPools[DBT any](drv Driver[DBT], mainName string, names ...string
 				_ DBT, deriver Deriver, pcfg *pgxpool.Config, lc fx.Lifecycle, cfg Config, logs *zap.Logger,
 			) (derived DBT, err error) {
 				// create the pool for each named derived.
-				derived, err = newDB(deriver, lc, cfg, pcfg, logs, drv)
+				derived, err = newDB(name, deriver, lc, cfg, pcfg, logs, drv)
 				if err != nil {
 					return derived, fmt.Errorf("failed to created derived pool: %w", err)
 				}

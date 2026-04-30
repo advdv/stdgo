@@ -2,8 +2,6 @@
 package stdpgxtxfx
 
 import (
-	"strings"
-
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/stdfx"
 	"github.com/advdv/stdgo/stdtx"
@@ -69,25 +67,14 @@ func New(params Params) (Result, error) {
 func Provide(applicationName string) fx.Option {
 	return stdfx.ZapEnvCfgModule[Config]("stdpgxtxfx", New,
 
-		// configure an application name for the connection.
+		// configure an application name for the connection. The "ro" pool's
+		// host rewriting (for Aurora cluster endpoints) is handled by stdpgxfx.
 		stdpgxfx.ProvideDeriver("rw", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			base.ConnConfig.RuntimeParams["application_name"] = applicationName + "-rw"
 			return base
 		}),
-
-		// on Aurora we split the read and write side to different endpoints.
-		stdpgxfx.ProvideDeriver("ro", func(logs *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
-			baseHost := base.ConnConfig.Host
+		stdpgxfx.ProvideDeriver("ro", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			base.ConnConfig.RuntimeParams["application_name"] = applicationName + "-ro"
-
-			// special clause for RDS aurora cluster.
-			if strings.HasSuffix(baseHost, ".rds.amazonaws.com") && strings.Contains(baseHost, ".cluster-") {
-				base.ConnConfig.Host = strings.Replace(baseHost, ".cluster-", ".cluster-ro-", 1)
-				logs.Info("derived read-only RDS cluster host",
-					zap.String("new_host", base.ConnConfig.Host),
-					zap.String("base_host", baseHost))
-			}
-
 			return base
 		}),
 	)

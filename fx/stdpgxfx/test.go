@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/stdfx"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 // an fx.In that is build by composing.
@@ -52,7 +54,13 @@ func TestProvide[DBT any](
 		fx.Provide(func() pgtestdb.Migrator { return mig }),
 		fx.Provide(NewPgtestdbTestMigrator),
 		// provide the "main" db, wrapped with migrating logic.
-		fx.Provide(fx.Annotate(newDB[DBT],
+		fx.Provide(fx.Annotate(
+			func(
+				deriver Deriver, lc fx.Lifecycle, cfg Config,
+				pcfg *pgxpool.Config, logs *zap.Logger, drv Driver[DBT],
+			) (DBT, error) {
+				return newDB(mainPoolName, deriver, lc, cfg, pcfg, logs, drv)
+			},
 			fx.ParamTags(
 				`name:"`+mainPoolName+`" optional:"true"`, // deriver
 				`optional:"true"`, // migrator
