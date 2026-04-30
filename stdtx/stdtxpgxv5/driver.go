@@ -42,8 +42,12 @@ func (d driver) TxDoneError() error {
 }
 
 // SerializationFailureMaxRetries configures how many retries are done when a serialization failure occurs.
+//
+// With exponential backoff (5ms base, 500ms cap, factor 2) and full jitter, 10 retries gives
+// roughly 1.5–3s of total retry budget — enough to ride out typical contention spikes without
+// exceeding upstream HTTP/RPC timeouts.
 func (d driver) SerializationFailureMaxRetries() int {
-	return 50
+	return 10
 }
 
 // BeginTx implements the starting of a transaction.
@@ -82,8 +86,18 @@ func (d driver) CommitTx(ctx context.Context, tx pgx.Tx) error {
 }
 
 // SerializationFailureCodes returns which error codes can be retried for serialization errors.
+//
+// PostgreSQL distinguishes two error codes in the 40 ("transaction rollback") class that
+// represent transient conflicts and can be safely retried by the client:
+//
+//   - 40001 (serialization_failure): an OCC conflict at Repeatable Read or Serializable
+//     isolation. PostgreSQL recommends retrying these unconditionally.
+//   - 40P01 (deadlock_detected): a lock-wait cycle detected by the deadlock detector.
+//     The conflict is already resolved by the time this is raised, so retrying is safe.
+//
+// See https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html
 func (d driver) SerializationFailureCodes() []string {
-	return []string{"40001"}
+	return []string{"40001", "40P01"}
 }
 
 // setup the tx when it's created. Allows additional sql to be run on every tx.

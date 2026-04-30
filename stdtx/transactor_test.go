@@ -97,7 +97,9 @@ func TestMaxRetries(t *testing.T) {
 	ctx, _, rw, _, _, _ := setup(t)
 
 	require.ErrorContains(t, stdtx.Transact0(ctx, rw, func(ctx context.Context, _ pgx.Tx) error {
-		if stdtx.AttemptFromContext(ctx) <= 51 {
+		// Max retries is 10 (1 initial + 10 retries = 11 attempts). Force one extra
+		// failure beyond that to exercise the "retries exceeded" path.
+		if stdtx.AttemptFromContext(ctx) <= 11 {
 			return &pgconn.PgError{Code: "40001"}
 		}
 

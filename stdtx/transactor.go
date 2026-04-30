@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/failsafe-go/failsafe-go"
@@ -57,6 +58,15 @@ func Transact1[TTx, U any](
 		return res, fmt.Errorf("%w", ErrAlreadyInTransactionScope)
 	}
 
+	// Retry policy: capped exponential backoff with full jitter.
+	//
+	// Without any delay, contending transactions retry in lock-step and re-collide on
+	// every attempt — a thundering herd that makes serialization failures worse rather
+	// than better. We use the AWS-recommended pattern (https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/):
+	// exponential backoff (5ms → 500ms, factor 2) combined with full jitter
+	// (WithJitterFactor(1.0) randomly varies each delay by ±100%, spreading retries
+	// across roughly (0, 2x) of the computed delay) to break correlation between
+	// concurrent retriers.
 	retry := retrypolicy.Builder[U]().
 		HandleIf(func(_ U, err error) bool {
 			var pgErr *pgconn.PgError
@@ -71,6 +81,8 @@ func Transact1[TTx, U any](
 
 			return false
 		}).
+		WithBackoff(5*time.Millisecond, 500*time.Millisecond).
+		WithJitterFactor(1.0).
 		WithMaxRetries(txr.drv.SerializationFailureMaxRetries()).
 		Build()
 

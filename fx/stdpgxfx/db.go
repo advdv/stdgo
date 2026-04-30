@@ -135,6 +135,12 @@ func New(params Params) (r Result, err error) {
 // connection. The signing region is derived from the live *pgx.ConnConfig host
 // so that derived pools (re-pointed by a Deriver to a different regional
 // endpoint) sign tokens for the right region automatically.
+//
+// Any pre-existing BeforeConnect hook (e.g., installed by a Deriver or the
+// caller of pgxpool.ParseConfig) is preserved and invoked first; the IAM token
+// is only assigned to pgc.Password if the prior hook returns no error. This
+// matches the chaining pattern used by aurora-dsql-connectors and avoids
+// silently clobbering a user-supplied hook.
 func installIamAuthBeforeConnect(pcfg *pgxpool.Config, params Params) error {
 	if params.AwsConfig.Credentials == nil {
 		return errors.New("IAM authentication is enabled but no AWS configuration provided")
@@ -142,8 +148,15 @@ func installIamAuthBeforeConnect(pcfg *pgxpool.Config, params Params) error {
 
 	awsCfg := params.AwsConfig
 	logs := params.Logs
+	prev := pcfg.BeforeConnect
 
 	pcfg.BeforeConnect = func(ctx context.Context, pgc *pgx.ConnConfig) error {
+		if prev != nil {
+			if err := prev(ctx, pgc); err != nil {
+				return err
+			}
+		}
+
 		region := DeriveSigningRegion(pgc.Host)
 		if region == "" {
 			return fmt.Errorf("could not derive IAM signing region from host %q: "+
