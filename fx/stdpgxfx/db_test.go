@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/advdv/stdgo/fx/stdawsfx"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdenvcfg"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
@@ -66,37 +67,132 @@ $$;`)
 	require.Equal(t, 1, obs.FilterMessage("notice: notice message").Len())
 }
 
-func TestIamAuth(t *testing.T) {
-	t.Setenv("AWS_ACCESS_KEY_ID", "A")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "B")
+func TestIamAuthRegionFromHost(t *testing.T) {
+	t.Parallel()
 
-	var db *sql.DB
+	cases := []struct {
+		name string
+		host string
+		want string
+	}{
+		{
+			name: "regional cluster (writer) endpoint",
+			host: "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com",
+			want: "eu-central-1",
+		},
+		{
+			name: "regional cluster reader endpoint",
+			host: "mycluster.cluster-ro-abc123.eu-central-1.rds.amazonaws.com",
+			want: "eu-central-1",
+		},
+		{
+			name: "regional instance endpoint",
+			host: "instance-1.abc123.ap-southeast-1.rds.amazonaws.com",
+			want: "ap-southeast-1",
+		},
+		{
+			name: "trailing dot",
+			host: "mycluster.cluster-abc123.us-west-2.rds.amazonaws.com.",
+			want: "us-west-2",
+		},
+		{
+			name: "global writer endpoint does NOT match",
+			host: "mycluster.global-abc123.global.rds.amazonaws.com",
+			want: "",
+		},
+		{
+			name: "non-RDS host",
+			host: "myproxy.example.com",
+			want: "",
+		},
+		{
+			name: "localhost",
+			host: "localhost",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, stdpgxfx.DeriveSigningRegion(tc.host))
+		})
+	}
+}
 
-	var pcfg *pgxpool.Config
+func TestIamAuthBeforeConnectUsesPerPoolHost(t *testing.T) {
+	// Simulate a Frankfurt-primary, Singapore-secondary deployment:
+	// - rw pool stays on the Frankfurt cluster endpoint (signs eu-central-1)
+	// - ro pool gets re-pointed by its Deriver to the Singapore reader endpoint
+	//   (signs ap-southeast-1)
+	// We build the *pgxpool.Config directly via stdpgxfx.New (rather than the
+	// full fx graph) so we can drive BeforeConnect with arbitrary live conns.
+	const (
+		fraHost = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
+		sgpHost = "mycluster.cluster-ro-def456.ap-southeast-1.rds.amazonaws.com"
+	)
 
-	var obs *observer.ObservedLogs
-	app := fxtest.New(t,
-		stdawsfx.Provide(),
-		stdzapfx.Fx(),
-		stdzapfx.TestProvide(t),
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
-			"STDPGX_IAM_AUTH_REGION":   "eu-central-1",
-			"STDZAP_LEVEL":             "debug",
-		}),
+	awsCfg, err := awsconfig.LoadDefaultConfig(t.Context(),
+		awsconfig.WithRegion("eu-central-1"),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("A", "B", "")))
+	require.NoError(t, err)
 
-		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
-		fx.Populate(&db, &pcfg, &obs))
-	app.RequireStart()
-	t.Cleanup(app.RequireStop)
+	res, err := stdpgxfx.New(stdpgxfx.Params{
+		Config: stdpgxfx.Config{
+			MainDatabaseURL: "postgresql://postgres:postgres@" + fraHost + ":5432/postgres",
+			IamAuth:         true,
+		},
+		AwsConfig: awsCfg,
+		Logs:      zap.NewNop(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res.PoolConfig.BeforeConnect)
 
-	require.NotNil(t, pcfg.BeforeConnect)
+	// Drive BeforeConnect with a Frankfurt-shaped *pgx.ConnConfig and a
+	// Singapore-shaped one. We can't inspect the actual SigV4 region without
+	// decoding the auth token, but we CAN assert that token generation succeeds
+	// (i.e., region resolution succeeds) and the password gets set — and we
+	// inspect the produced token's URL since BuildAuthToken returns it as a
+	// presigned URL containing X-Amz-Credential=<key>/<date>/<region>/...
+	for _, tc := range []struct {
+		host       string
+		wantRegion string
+	}{
+		{fraHost, "eu-central-1"},
+		{sgpHost, "ap-southeast-1"},
+	} {
+		pgc := res.PoolConfig.ConnConfig.Copy()
+		pgc.Host = tc.host
+		err := res.PoolConfig.BeforeConnect(t.Context(), pgc)
+		require.NoErrorf(t, err, "BeforeConnect should succeed for host=%s", tc.host)
+		require.NotEmpty(t, pgc.Password, "token should be set for host=%s", tc.host)
+		// the BuildAuthToken result is a presigned URL; the credential scope
+		// includes the signing region.
+		require.Containsf(t, pgc.Password, "%2F"+tc.wantRegion+"%2F",
+			"token for host=%s should be signed for region=%s but was: %s",
+			tc.host, tc.wantRegion, pgc.Password)
+	}
+}
 
-	// cannot exactly assert it, but log with error should make it work.
-	var res int
-	err := db.QueryRowContext(t.Context(), `SELECT 1+2`).Scan(&res)
-	require.ErrorContains(t, err, "password authentication failed")
-	require.Equal(t, 1, obs.FilterMessage("building IAM auth token").Len())
+func TestIamAuthBeforeConnectErrorsOnNonRegionalHost(t *testing.T) {
+	awsCfg, err := awsconfig.LoadDefaultConfig(t.Context(),
+		awsconfig.WithRegion("eu-central-1"),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("A", "B", "")))
+	require.NoError(t, err)
+
+	res, err := stdpgxfx.New(stdpgxfx.Params{
+		Config: stdpgxfx.Config{
+			MainDatabaseURL: "postgresql://postgres:postgres@localhost:5432/postgres",
+			IamAuth:         true,
+		},
+		AwsConfig: awsCfg,
+		Logs:      zap.NewNop(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res.PoolConfig.BeforeConnect)
+
+	pgc := res.PoolConfig.ConnConfig.Copy()
+	err = res.PoolConfig.BeforeConnect(t.Context(), pgc)
+	require.ErrorContains(t, err, "could not derive IAM signing region from host")
 }
 
 func TestProvideWithDeriver(t *testing.T) {
