@@ -104,12 +104,16 @@ func (d Driver) Query(_ context.Context, _ string, _, _ any) error {
 	return fmt.Errorf("Driver.Query is not supported: create a transaction instead")
 }
 
-// Tx will begin a transaction with linearizable isolation level.
+// Tx will begin a transaction with the default repeatable-read isolation level. This default
+// is required for compatibility with Aurora hot standbys (which reject serializable).
 func (d Driver) Tx(ctx context.Context) (entdialect.Tx, error) {
-	return d.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	return d.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 }
 
-// BeginTx calls the base driver's method if it's supported and calls our hook.
+// BeginTx calls the base driver's method if it's supported and calls our hook. Only
+// snapshot-or-stricter isolation levels are accepted: read-committed, repeatable-read or
+// serializable. Aurora hot standbys only accept repeatable-read or read-committed, so
+// serializable is permitted but should not be used against read-only replicas.
 func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error) {
 	drv, ok := d.Driver.(interface {
 		BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx, error)
@@ -118,8 +122,11 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 		return nil, fmt.Errorf("Driver.BeginTx is not supported")
 	}
 
-	if opts.Isolation != sql.LevelSerializable {
-		return nil, fmt.Errorf("only serializable (most strict) isolation level is allowed")
+	switch opts.Isolation {
+	case sql.LevelReadCommitted, sql.LevelRepeatableRead, sql.LevelSerializable:
+		// allowed
+	default:
+		return nil, fmt.Errorf("isolation level %q is not allowed: use read-committed, repeatable-read or serializable", opts.Isolation)
 	}
 
 	tx, err := drv.BeginTx(ctx, opts)

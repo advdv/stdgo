@@ -37,9 +37,10 @@ type Result struct {
 
 // New provides the transactors.
 func New(params Params) (Result, error) {
-	// We always run in serializable mode, any other mode can cause write-skew. Which makes it hard to guarantee
-	// min/max counts and check across rows.
-	opts := []stdtxpgxv5.Option{stdtxpgxv5.IsolationMode(pgx.Serializable)}
+	// Both pools default to repeatable-read (the driver default). This is the strictest
+	// isolation level that is accepted on Aurora hot standbys, so it must be used
+	// uniformly to keep RW and RO behaving consistently across regions.
+	opts := []stdtxpgxv5.Option{}
 	if params.TxBeginSQL != nil {
 		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxBeginSQL))
 	}

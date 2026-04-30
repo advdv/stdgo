@@ -38,13 +38,24 @@ func (d *testDriver2) BeginTx(_ context.Context, opts *sql.TxOptions) (entdialec
 	return &testTx1{}, nil
 }
 
-func TestNonLinearlizable(t *testing.T) {
+func TestIsolationLevelGuard(t *testing.T) {
 	ctx := setup1(t)
 	base := &testDriver2{}
 	wrapped := stdent.NewDriver(base)
 
+	// the default (sql.LevelDefault) is rejected: callers must pick one of the allowed levels.
 	_, err := wrapped.BeginTx(ctx, &sql.TxOptions{})
-	require.ErrorContains(t, err, "only serializable")
+	require.ErrorContains(t, err, "is not allowed")
+
+	// allowed levels do not error.
+	for _, lvl := range []sql.IsolationLevel{
+		sql.LevelReadCommitted,
+		sql.LevelRepeatableRead,
+		sql.LevelSerializable,
+	} {
+		_, err := wrapped.BeginTx(ctx, &sql.TxOptions{Isolation: lvl})
+		require.NoError(t, err)
+	}
 
 	err = wrapped.Exec(ctx, "", nil, nil)
 	require.ErrorContains(t, err, "is not supported")

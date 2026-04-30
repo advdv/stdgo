@@ -22,7 +22,9 @@ func New(db *pgxpool.Pool, opts ...Option) stdtx.Driver[pgx.Tx] {
 	drv := driver{db: db}
 
 	AccessMode(pgx.ReadWrite)(&drv.opts)
-	IsolationMode(pgx.Serializable)(&drv.opts)
+	// repeatable-read gives snapshot semantics and is the strictest level that works
+	// against Aurora hot standbys. Callers can opt-in to serializable explicitly.
+	IsolationMode(pgx.RepeatableRead)(&drv.opts)
 	DiscourageSeqScan(false)(&drv.opts)
 	BeginWithSQL(func(_ context.Context, sql *strings.Builder, _ pgx.Tx) (*strings.Builder, error) {
 		return sql, nil

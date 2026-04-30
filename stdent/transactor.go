@@ -52,8 +52,9 @@ func New[T Tx](client Client[T], opts ...Option) *Transactor[T] {
 	SerializationFailureMaxRetries(50)(&txr.opts)
 	// see https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html
 	SerializationFailureCodes("40001")(&txr.opts)
-	// the strictest serialization, but we need to be ready to retry
-	IsolationLevel(sql.LevelSerializable)(&txr.opts)
+	// repeatable-read gives snapshot semantics and is the strictest level that works
+	// against Aurora hot standbys. Callers can opt-in to serializable explicitly.
+	IsolationLevel(sql.LevelRepeatableRead)(&txr.opts)
 	// common to read and wrtie
 	ReadOnly(false)(&txr.opts)
 
