@@ -14,7 +14,6 @@ import (
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/samber/lo"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -27,12 +26,25 @@ import (
 type Config struct {
 	TokenIssuer   string `env:"TOKEN_ISSUER,required"`
 	TokenAudience string `env:"TOKEN_AUDIENCE,required"`
+	// TenantClaim is the JWT claim path from which to read an opaque tenant
+	// identifier (e.g. "https://example.com/org_id" for an Auth0 namespaced
+	// custom claim, or "tenant_id" for a flat claim). When empty, no tenant
+	// is extracted and Claims.TenantID is left blank. The semantics of the
+	// value are owned by the consuming application; this package treats it
+	// as an opaque string.
+	TenantClaim string `env:"TENANT_CLAIM"`
 }
 
 // Claims holds the authentication information extracted from a JWT.
 type Claims struct {
 	Subject string
 	Scopes  []string
+	// TenantID is the opaque tenant identifier read from the JWT claim path
+	// configured via Config.TenantClaim. It is empty when TenantClaim is not
+	// configured or the token does not carry the configured claim. The value
+	// is treated as opaque by this package; the consuming application owns
+	// its semantics (Auth0 org_id, Cognito custom:tenant, etc).
+	TenantID string
 }
 
 // ClaimsFromContext retrieves the claims stored by the auth middleware.
@@ -214,9 +226,9 @@ func (ac *AccessControl) authenticate(_ context.Context, req *http.Request) (any
 
 	scopes := strings.Fields(scopeStr)
 
-	var rawPermissions interface{}
+	var rawPermissions any
 	if err := tok.Get("permissions", &rawPermissions); err == nil {
-		if perms, ok := rawPermissions.([]interface{}); ok {
+		if perms, ok := rawPermissions.([]any); ok {
 			for _, p := range perms {
 				if s, ok := p.(string); ok {
 					scopes = append(scopes, s)
@@ -224,15 +236,28 @@ func (ac *AccessControl) authenticate(_ context.Context, req *http.Request) (any
 			}
 		}
 	}
-	scopes = lo.Uniq(scopes)
+	scopes = uniqStrings(scopes)
 
 	sub, _ := tok.Subject()
 
-	ac.logs.Info("authenticated request",
-		zap.String("subject", sub),
-		zap.Strings("scopes", scopes))
+	var tenantID string
+	if ac.config.TenantClaim != "" {
+		// Best-effort: a missing claim is not an authentication error.
+		// Whether absent tenancy is acceptable is a consumer decision.
+		_ = tok.Get(ac.config.TenantClaim, &tenantID)
+	}
 
-	return Claims{Subject: sub, Scopes: scopes}, nil
+	logFields := []zap.Field{
+		zap.String("subject", sub),
+		zap.Strings("scopes", scopes),
+	}
+	if tenantID != "" {
+		logFields = append(logFields, zap.String("tenant_id", tenantID))
+	}
+
+	ac.logs.Info("authenticated request", logFields...)
+
+	return Claims{Subject: sub, Scopes: scopes, TenantID: tenantID}, nil
 }
 
 // Params holds the dependencies for constructing AccessControl.
@@ -274,6 +299,24 @@ func New(params Params) (Result, error) {
 	})
 
 	return Result{AccessControl: accessControl}, nil
+}
+
+// uniqStrings returns a new slice with duplicates removed, preserving the
+// first occurrence order of each element.
+func uniqStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+
+	return out
 }
 
 // Provide returns an fx.Option that wires the stdauth module with config from the environment.

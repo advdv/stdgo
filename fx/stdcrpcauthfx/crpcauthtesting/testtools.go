@@ -85,6 +85,41 @@ func (s *TokenSigner) SignWithPermissions(tb testing.TB, subject string, permiss
 	return string(signed)
 }
 
+// SignWithClaims creates a signed JWT with the given subject, scopes (via the
+// "scope" claim) and any number of extra claims. Useful for testing custom
+// claim paths such as tenancy identifiers (e.g. "https://example.com/org_id").
+// Claim keys with "/" or other path-like characters are passed through verbatim
+// so namespaced Auth0 claims work as-is.
+func (s *TokenSigner) SignWithClaims(
+	tb testing.TB, subject string, scopes []string, extraClaims map[string]any,
+) string {
+	tb.Helper()
+
+	builder := jwt.NewBuilder().
+		Issuer(s.issuer).
+		Audience([]string{s.audience}).
+		Subject(subject).
+		IssuedAt(TestClockTime.Add(-time.Minute)).
+		Expiration(TestClockTime.Add(24*time.Hour)).
+		Claim("scope", strings.Join(scopes, " "))
+
+	for k, v := range extraClaims {
+		builder = builder.Claim(k, v)
+	}
+
+	tok, err := builder.Build()
+	if err != nil {
+		tb.Fatalf("testtools: build jwt: %v", err)
+	}
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), s.key))
+	if err != nil {
+		tb.Fatalf("testtools: sign jwt: %v", err)
+	}
+
+	return string(signed)
+}
+
 // SignWithScopeAndPermissions creates a signed JWT with both the "scope" claim (space-separated)
 // and the "permissions" claim (JSON array), matching the Auth0 m2m token format where the same
 // scope can appear in both claims.

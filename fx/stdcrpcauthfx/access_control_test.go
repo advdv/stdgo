@@ -3,6 +3,7 @@ package stdcrpcauthfx_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,7 +154,21 @@ func TestWrapNonProcedurePassesThrough(t *testing.T) {
 func setupLocal(tb testing.TB) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenSigner) {
 	tb.Helper()
 
+	return setupLocalWithEnv(tb, nil)
+}
+
+func setupLocalWithEnv(
+	tb testing.TB, extraEnv map[string]string,
+) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenSigner) {
+	tb.Helper()
+
 	serverURL, signer := crpcauthtesting.NewJWKSServer(tb)
+
+	env := map[string]string{
+		"TOKEN_ISSUER":   serverURL,
+		"TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
+	}
+	maps.Copy(env, extraEnv)
 
 	var deps struct {
 		fx.In
@@ -164,10 +179,7 @@ func setupLocal(tb testing.TB) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.T
 	app := fxtest.New(tb,
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"TOKEN_ISSUER":   serverURL,
-			"TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
-		}),
+		stdenvcfg.ProvideExplicitEnvironment(env),
 		fx.Supply(fx.Annotate(
 			crpcauthtesting.Clock(),
 			fx.As(new(jwt.Clock)),
@@ -270,4 +282,98 @@ func TestClaimsFromContextEmpty(t *testing.T) {
 
 	require.Empty(t, claims.Subject)
 	require.Empty(t, claims.Scopes)
+	require.Empty(t, claims.TenantID)
+}
+
+// captureClaims runs an authenticated request through ac.Wrap and returns the
+// claims observed by the inner handler.
+func captureClaims(
+	t *testing.T, ac *stdcrpcauthfx.AccessControl, token string,
+) (int, stdcrpcauthfx.Claims) {
+	t.Helper()
+
+	var captured stdcrpcauthfx.Claims
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = stdcrpcauthfx.ClaimsFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost,
+		"/fx.stdcrpcauthfx.internal.v1.SystemService/WhoAmI", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	ac.Wrap(inner).ServeHTTP(rec, req)
+
+	return rec.Code, captured
+}
+
+const testTenantClaim = "https://example.com/org_id"
+
+func TestWrapTenantIDExtracted(t *testing.T) {
+	t.Parallel()
+
+	ac, signer := setupLocalWithEnv(t, map[string]string{
+		"TENANT_CLAIM": testTenantClaim,
+	})
+	token := signer.SignWithClaims(t, "auth0|user123", []string{"system:read"},
+		map[string]any{testTenantClaim: "org_ABC123"})
+
+	code, claims := captureClaims(t, ac, token)
+
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "org_ABC123", claims.TenantID)
+	require.Equal(t, "auth0|user123", claims.Subject)
+	require.Equal(t, []string{"system:read"}, claims.Scopes)
+}
+
+func TestWrapTenantIDMissingClaimWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	// TENANT_CLAIM is configured but the token does not carry the claim. This
+	// must not fail authentication; TenantID is simply empty and the consumer
+	// decides whether absent tenancy is acceptable for this procedure.
+	ac, signer := setupLocalWithEnv(t, map[string]string{
+		"TENANT_CLAIM": testTenantClaim,
+	})
+	token := signer.Sign(t, "auth0|user123", []string{"system:read"})
+
+	code, claims := captureClaims(t, ac, token)
+
+	require.Equal(t, http.StatusOK, code)
+	require.Empty(t, claims.TenantID)
+}
+
+func TestWrapTenantIDNotConfiguredIgnoresClaim(t *testing.T) {
+	t.Parallel()
+
+	// TENANT_CLAIM is unset. Even if the token carries something at the path
+	// some other deployment uses, this deployment must not pick it up.
+	ac, signer := setupLocal(t)
+	token := signer.SignWithClaims(t, "auth0|user123", []string{"system:read"},
+		map[string]any{testTenantClaim: "org_should_be_ignored"})
+
+	code, claims := captureClaims(t, ac, token)
+
+	require.Equal(t, http.StatusOK, code)
+	require.Empty(t, claims.TenantID,
+		"TenantID must be empty when TENANT_CLAIM is not configured")
+}
+
+func TestWrapTenantIDNonStringClaimIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	// A claim of the wrong shape (here, an array) must not panic and must
+	// leave TenantID empty rather than silently coercing.
+	ac, signer := setupLocalWithEnv(t, map[string]string{
+		"TENANT_CLAIM": testTenantClaim,
+	})
+	token := signer.SignWithClaims(t, "auth0|user123", []string{"system:read"},
+		map[string]any{testTenantClaim: []string{"not", "a", "string"}})
+
+	code, claims := captureClaims(t, ac, token)
+
+	require.Equal(t, http.StatusOK, code)
+	require.Empty(t, claims.TenantID)
 }

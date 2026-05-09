@@ -125,8 +125,16 @@ func (d Driver) BeginTx(ctx context.Context, opts *sql.TxOptions) (entdialect.Tx
 	switch opts.Isolation {
 	case sql.LevelReadCommitted, sql.LevelRepeatableRead, sql.LevelSerializable:
 		// allowed
+	case sql.LevelDefault,
+		sql.LevelReadUncommitted,
+		sql.LevelWriteCommitted,
+		sql.LevelSnapshot,
+		sql.LevelLinearizable:
+		fallthrough
 	default:
-		return nil, fmt.Errorf("isolation level %q is not allowed: use read-committed, repeatable-read or serializable", opts.Isolation)
+		return nil, fmt.Errorf(
+			"isolation level %q is not allowed: use read-committed, repeatable-read or serializable",
+			opts.Isolation)
 	}
 
 	tx, err := drv.BeginTx(ctx, opts)

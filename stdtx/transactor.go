@@ -62,7 +62,8 @@ func Transact1[TTx, U any](
 	//
 	// Without any delay, contending transactions retry in lock-step and re-collide on
 	// every attempt — a thundering herd that makes serialization failures worse rather
-	// than better. We use the AWS-recommended pattern (https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/):
+	// than better. We use the AWS-recommended pattern
+	// (https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/):
 	// exponential backoff (5ms → 500ms, factor 2) combined with full jitter
 	// (WithJitterFactor(1.0) randomly varies each delay by ±100%, spreading retries
 	// across roughly (0, 2x) of the computed delay) to break correlation between
