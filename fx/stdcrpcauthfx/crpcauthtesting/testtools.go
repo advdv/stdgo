@@ -156,7 +156,7 @@ func Clock() jwt.Clock {
 
 // NewJWKSServer starts a local JWKS httptest.Server and returns the server URL and a TokenSigner.
 // The server is automatically closed when the test completes. The server URL can be used as
-// TOKEN_ISSUER and the server serves the public key at /.well-known/jwks.json.
+// STDCRPCAUTH_TOKEN_ISSUER and the server serves the public key at /.well-known/jwks.json.
 func NewJWKSServer(tb testing.TB) (serverURL string, signer *TokenSigner) {
 	tb.Helper()
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/authn"
-	"github.com/advdv/stdgo/stdenvcfg"
+	"github.com/advdv/stdgo/stdfx"
 	"github.com/cockroachdb/errors"
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -319,11 +319,10 @@ func uniqStrings(in []string) []string {
 	return out
 }
 
-// Provide returns an fx.Option that wires the stdauth module with config from the environment.
+// Provide returns an fx.Option that wires the stdauth module with config from
+// the environment. Like the other stdgo fx modules it reads its configuration
+// from environment variables prefixed with STDCRPCAUTH_ (e.g.
+// STDCRPCAUTH_TOKEN_ISSUER, STDCRPCAUTH_TOKEN_AUDIENCE, STDCRPCAUTH_TENANT_CLAIM).
 func Provide() fx.Option {
-	return fx.Module("stdcrpcauth",
-		fx.Decorate(func(l *zap.Logger) *zap.Logger { return l.Named("stdcrpcauth") }),
-		stdenvcfg.Provide[Config](),
-		fx.Provide(New),
-	)
+	return stdfx.ZapEnvCfgModule[Config]("stdcrpcauth", New)
 }

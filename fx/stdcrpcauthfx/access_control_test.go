@@ -35,8 +35,8 @@ func setup(tb testing.TB) *stdcrpcauthfx.AccessControl {
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"TOKEN_ISSUER":   "https://cmplback-nonprod.eu.auth0.com/",
-			"TOKEN_AUDIENCE": "urn:sterndesk:cmplback:cmpltemporal:api",
+			"STDCRPCAUTH_TOKEN_ISSUER":   "https://cmplback-nonprod.eu.auth0.com/",
+			"STDCRPCAUTH_TOKEN_AUDIENCE": "urn:sterndesk:cmplback:cmpltemporal:api",
 		}),
 		fx.Supply(fx.Annotate(
 			jwt.ClockFunc(func() time.Time { return time.Unix(1776691700, 0) }),
@@ -165,8 +165,8 @@ func setupLocalWithEnv(
 	serverURL, signer := crpcauthtesting.NewJWKSServer(tb)
 
 	env := map[string]string{
-		"TOKEN_ISSUER":   serverURL,
-		"TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
+		"STDCRPCAUTH_TOKEN_ISSUER":   serverURL,
+		"STDCRPCAUTH_TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
 	}
 	maps.Copy(env, extraEnv)
 
@@ -315,7 +315,7 @@ func TestWrapTenantIDExtracted(t *testing.T) {
 	t.Parallel()
 
 	ac, signer := setupLocalWithEnv(t, map[string]string{
-		"TENANT_CLAIM": testTenantClaim,
+		"STDCRPCAUTH_TENANT_CLAIM": testTenantClaim,
 	})
 	token := signer.SignWithClaims(t, "auth0|user123", []string{"system:read"},
 		map[string]any{testTenantClaim: "org_ABC123"})
@@ -335,7 +335,7 @@ func TestWrapTenantIDMissingClaimWhenConfigured(t *testing.T) {
 	// must not fail authentication; TenantID is simply empty and the consumer
 	// decides whether absent tenancy is acceptable for this procedure.
 	ac, signer := setupLocalWithEnv(t, map[string]string{
-		"TENANT_CLAIM": testTenantClaim,
+		"STDCRPCAUTH_TENANT_CLAIM": testTenantClaim,
 	})
 	token := signer.Sign(t, "auth0|user123", []string{"system:read"})
 
@@ -367,7 +367,7 @@ func TestWrapTenantIDNonStringClaimIsIgnored(t *testing.T) {
 	// A claim of the wrong shape (here, an array) must not panic and must
 	// leave TenantID empty rather than silently coercing.
 	ac, signer := setupLocalWithEnv(t, map[string]string{
-		"TENANT_CLAIM": testTenantClaim,
+		"STDCRPCAUTH_TENANT_CLAIM": testTenantClaim,
 	})
 	token := signer.SignWithClaims(t, "auth0|user123", []string{"system:read"},
 		map[string]any{testTenantClaim: []string{"not", "a", "string"}})

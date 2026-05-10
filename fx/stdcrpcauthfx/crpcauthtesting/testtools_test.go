@@ -30,8 +30,8 @@ func setup(tb testing.TB) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenS
 
 	app := fxtest.New(tb,
 		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"TOKEN_ISSUER":   jwksURL,
-			"TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
+			"STDCRPCAUTH_TOKEN_ISSUER":   jwksURL,
+			"STDCRPCAUTH_TOKEN_AUDIENCE": crpcauthtesting.TestAudience,
 		}),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
