@@ -14,6 +14,7 @@ linters:
     - gochecknoinits # frameworks and magefile use init responsibly
     - goconst # text identifiers makes it more readable
     - gomoddirectives # can't get this to shutup
+    - gomodguard # deprecated, replaced by gomodguard_v2
     - ireturn # our oapi implementations return interfaces all the time
     - mnd # just too annoying
     - nlreturn # too annoying for small functions

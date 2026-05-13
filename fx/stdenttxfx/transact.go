@@ -46,36 +46,64 @@ type Result[T stdent.Tx] struct {
 	ReadOnly  *stdent.Transactor[T] `name:"ro"`
 }
 
-// New provides the transactors.
-func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error) {
-	opts := []stdent.DriverOption{}
+// driverOpts builds the standard set of stdent.DriverOption values shared by
+// all providers in this package. Keeping it in one place ensures that every
+// binary (web, worker, …) gets identical query-cost gating, sequential-scan
+// discouragement and BeginHook wiring.
+func driverOpts(cfg Config, hook stdent.BeginHookFunc) []stdent.DriverOption {
+	var opts []stdent.DriverOption
 
 	// when enabled we can check on every query if indexes are used correctly.
-	if params.TestMaxQueryCosts > 0 {
+	if cfg.TestMaxQueryCosts > 0 {
 		opts = append(opts,
 			stdent.TxExecQueryLoggingLevel(zapcore.InfoLevel),
 			stdent.DiscourageSequentialScans(),
-			stdent.TestForMaxQueryPlanCosts(params.TestMaxQueryCosts),
+			stdent.TestForMaxQueryPlanCosts(cfg.TestMaxQueryCosts),
 		)
 	}
 
-	// allow some logic to be run at the beginning of every transaction. Primarily to setu
+	// allow some logic to be run at the beginning of every transaction. Primarily to setup
 	// for Row-level security.
-	if params.TxBeginSQL != nil {
-		opts = append(opts, stdent.BeginHook(params.TxBeginSQL))
+	if hook != nil {
+		opts = append(opts, stdent.BeginHook(hook))
 	}
 
-	// read-write side
-	rwBaseDrv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: params.RW})
-	rwDrv := stdent.NewDriver(rwBaseDrv, opts...)
-	rwClient := params.ClientFactory(rwDrv)
-	params.Append(fx.Hook{OnStop: func(context.Context) error { return params.RW.Close() }})
+	return opts
+}
 
-	// read-only side
-	roBaseDrv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: params.RO})
-	roDrv := stdent.NewDriver(roBaseDrv, opts...)
-	roClient := params.ClientFactory(roDrv)
-	params.Append(fx.Hook{OnStop: func(context.Context) error { return params.RO.Close() }})
+// newPoolClient wires a single *sql.DB into an ent client through the standard
+// stdent driver, registering an OnStop hook on the supplied lifecycle that
+// closes the *sql.DB. Shared between the rw+ro and rw-only providers so the
+// driver-construction code path is exactly the same in every binary.
+func newPoolClient[T stdent.Tx, C stdent.Client[T]](
+	db *sql.DB,
+	factory ClientFactoryFunc[T, C],
+	opts []stdent.DriverOption,
+	lc fx.Lifecycle,
+) C {
+	base := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: db})
+	drv := stdent.NewDriver(base, opts...)
+	cli := factory(drv)
+	lc.Append(fx.Hook{OnStop: func(context.Context) error { return db.Close() }})
+	return cli
+}
+
+// appNameDeriver returns a stdpgxfx.Deriver that pins the connection's
+// application_name runtime parameter. It is shared by Provide and
+// ProvideRWOnly so the per-pool naming convention stays identical.
+func appNameDeriver(applicationName string) stdpgxfx.Deriver {
+	return func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
+		base.ConnConfig.RuntimeParams["application_name"] = applicationName
+		return base
+	}
+}
+
+// New provides the transactors.
+func New[T stdent.Tx, C stdent.Client[T]](params Params[T, C]) (Result[T], error) {
+	opts := driverOpts(params.Config, params.TxBeginSQL)
+
+	rwClient := newPoolClient(params.RW, params.ClientFactory, opts, params.Lifecycle)
+	roClient := newPoolClient(params.RO, params.ClientFactory, opts, params.Lifecycle)
 
 	return Result[T]{
 		ReadWrite: stdent.New(rwClient),
@@ -91,14 +119,8 @@ func Provide[T stdent.Tx, C stdent.Client[T]](applicationName string, clientFact
 
 		// configure an application name for the connection. The "ro" pool's
 		// host rewriting (for Aurora cluster endpoints) is handled by stdpgxfx.
-		stdpgxfx.ProvideDeriver("rw", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
-			base.ConnConfig.RuntimeParams["application_name"] = applicationName + "-rw"
-			return base
-		}),
-		stdpgxfx.ProvideDeriver("ro", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
-			base.ConnConfig.RuntimeParams["application_name"] = applicationName + "-ro"
-			return base
-		}),
+		stdpgxfx.ProvideDeriver("rw", appNameDeriver(applicationName+"-rw")),
+		stdpgxfx.ProvideDeriver("ro", appNameDeriver(applicationName+"-ro")),
 	)
 }
 
