@@ -21,7 +21,7 @@ import (
 func setup(tb testing.TB) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenSigner) {
 	tb.Helper()
 
-	jwksURL, signer := crpcauthtesting.NewJWKSServer(tb)
+	jwksURL, signer := crpcauthtesting.NewJWKSServer(tb, "")
 
 	var deps struct {
 		fx.In

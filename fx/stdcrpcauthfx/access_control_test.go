@@ -162,7 +162,9 @@ func setupLocalWithEnv(
 ) (*stdcrpcauthfx.AccessControl, *crpcauthtesting.TokenSigner) {
 	tb.Helper()
 
-	serverURL, signer := crpcauthtesting.NewJWKSServer(tb)
+	// keep the signer's tenant-claim path in lockstep with whatever the
+	// fx-supplied env tells the production middleware to read.
+	serverURL, signer := crpcauthtesting.NewJWKSServer(tb, extraEnv["STDCRPCAUTH_TENANT_CLAIM"])
 
 	env := map[string]string{
 		"STDCRPCAUTH_TOKEN_ISSUER":   serverURL,
