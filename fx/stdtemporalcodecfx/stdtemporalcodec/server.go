@@ -139,10 +139,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var out []*commonpb.Payload
 	switch operation {
 	case opEncode:
-		//nolint:contextcheck // converter.PayloadCodec.Encode does not take a context.
 		out, err = codec.Encode(payloads)
 	case opDecode:
-		//nolint:contextcheck // converter.PayloadCodec.Decode does not take a context.
 		out, err = codec.Decode(payloads)
 	}
 	if err != nil {

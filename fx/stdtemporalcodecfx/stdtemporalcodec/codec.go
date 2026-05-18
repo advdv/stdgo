@@ -1,53 +1,52 @@
-// Package stdtemporalcodec implements a Temporal converter.PayloadCodec
-// that encrypts payloads using AWS KMS envelope encryption, together with an
-// HTTP handler that exposes the codec over Temporal's remote codec contract.
+// Package stdtemporalcodec implements a Temporal converter.PayloadCodec that
+// encrypts payloads using a Google Tink AEAD primitive backed by an
+// AES-256-GCM keyset, together with an HTTP handler that exposes the codec
+// over Temporal's remote codec contract.
 //
-// Tenant isolation is achieved by passing an EncryptionContext of
-// {"namespace": <ns>} to KMS on both GenerateDataKey and Decrypt. KMS will
-// refuse to decrypt if the namespace in the context does not match the one
-// used at encryption time.
+// Why Tink instead of a hand-rolled AES-GCM construction:
 //
-// Wire format of the encrypted payload data:
+//   - Tink owns the on-the-wire ciphertext format (a 5-byte type-prefix that
+//     embeds the key id, followed by iv|ct|tag). We don't have to define and
+//     freeze our own byte layout.
+//   - Tink keysets are first-class containers for key rotation: every keyset
+//     has one primary key (used to encrypt) and any number of additional
+//     keys (all tried on decrypt). Rotation is therefore the boring case,
+//     not a special path.
+//   - AES-256-GCM is still the underlying primitive; tenant isolation is
+//     enforced by passing the Temporal namespace into the AEAD's
+//     additionalData argument. A ciphertext produced for namespace A cannot
+//     be decrypted under namespace B: GCM authentication will fail.
 //
-//	| uint32 wrappedLen (big-endian) | wrapped DEK | 12-byte nonce | AES-GCM ciphertext |
+// Payloads that are not encoded with MetadataEncodingEncrypted pass through
+// Decode unchanged.
 //
-// The plaintext that is encrypted is the protobuf-marshaled commonpb.Payload
-// (including its original metadata + data). Payloads that are not encoded with
-// MetadataEncodingEncrypted pass through Decode unchanged.
+// # Key rotation
+//
+// To rotate keys:
+//
+//  1. Add a new key to the Tink keyset (e.g. with tinkey or the
+//     cmd/stdtemporalcodec-genkeyset helper in this repo).
+//  2. Promote it to primary.
+//  3. Ship the new base64-encoded cleartext keyset to every worker, client
+//     and codec-server process and redeploy.
+//
+// New ciphertexts are produced under the new primary; ciphertexts produced
+// under the previous primary continue to decrypt because the old key is
+// still present in the keyset. Once Temporal history retention has expired
+// for all payloads encrypted under the old key, it can be removed from the
+// keyset.
 package stdtemporalcodec
 
 import (
-	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/kms"
-	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/tink-crypto/tink-go/v2/aead"
+	"github.com/tink-crypto/tink-go/v2/keyset"
+	"github.com/tink-crypto/tink-go/v2/tink"
 	commonpb "go.temporal.io/api/common/v1"
-	"go.temporal.io/sdk/converter"
 	"google.golang.org/protobuf/proto"
 )
-
-// KMS abstracts the subset of the AWS KMS API used by Codec so it can be
-// mocked or faked in tests.
-type KMS interface {
-	GenerateDataKey(
-		ctx context.Context,
-		in *kms.GenerateDataKeyInput,
-		optFns ...func(*kms.Options),
-	) (*kms.GenerateDataKeyOutput, error)
-	Decrypt(
-		ctx context.Context,
-		in *kms.DecryptInput,
-		optFns ...func(*kms.Options),
-	) (*kms.DecryptOutput, error)
-}
 
 // Metadata keys and well-known values used on commonpb.Payload to identify
 // payloads that were encrypted by this codec.
@@ -56,31 +55,11 @@ const (
 	// metadata key for payloads produced by this codec.
 	MetadataEncodingEncrypted = "binary/encrypted"
 
-	// MetadataKeyID is the metadata key holding the KMS key ARN/alias used to
-	// produce the wrapped data encryption key.
-	MetadataKeyID = "encryption-key-id"
-
-	// MetadataCipher is the metadata key holding the cipher identifier used
-	// to encrypt the payload.
-	MetadataCipher = "encryption-cipher"
-
-	// MetadataContextNamespace is the metadata key holding the value of the
-	// KMS EncryptionContext "namespace" entry. It is captured for
-	// observability; KMS itself enforces the binding at decrypt time.
+	// MetadataContextNamespace is the metadata key holding the Temporal
+	// namespace this payload was encrypted for. It is captured for
+	// observability; the AEAD additionalData binding enforces the
+	// constraint at decrypt time.
 	MetadataContextNamespace = "encryption-context-namespace"
-
-	// CipherAES256GCM identifies AES-256-GCM with a 12-byte nonce.
-	CipherAES256GCM = "AES_256_GCM"
-
-	// encryptionContextNamespaceKey is the key used inside the KMS
-	// EncryptionContext map.
-	encryptionContextNamespaceKey = "namespace"
-
-	// dekSize is the size of the data encryption key in bytes.
-	dekSize = 32
-
-	// nonceSize is the size of the AES-GCM nonce in bytes.
-	nonceSize = 12
 
 	// standard encoding metadata key on commonpb.Payload.
 	metadataEncodingKey = "encoding"
@@ -88,62 +67,58 @@ const (
 
 // Options configures a Codec.
 type Options struct {
-	// KeyID is the KMS key ARN or alias used to generate data encryption
-	// keys. Required.
-	KeyID string
+	// Keyset is the Tink keyset used to encrypt (with the primary key)
+	// and decrypt (trying every key in the keyset). Required.
+	Keyset *keyset.Handle
 
 	// Namespace is the Temporal namespace that scopes the codec instance.
-	// It is included in the KMS EncryptionContext on every operation.
+	// It is bound into the AEAD additionalData on every operation.
 	// Required.
 	Namespace string
 }
 
-// Codec implements converter.PayloadCodec using KMS-backed envelope
-// encryption scoped to a single Temporal namespace.
+// Codec implements converter.PayloadCodec using a Tink AEAD primitive
+// (AES-256-GCM in the typical configuration) scoped to a single Temporal
+// namespace.
 type Codec struct {
-	kms  KMS
-	opts Options
+	aead      tink.AEAD
+	namespace string
 }
-
-// Ensure Codec implements the SDK interface at compile time.
-var _ converter.PayloadCodec = (*Codec)(nil)
 
 // New constructs a Codec. It returns an error if required options are
 // missing.
-func New(k KMS, opts Options) (*Codec, error) {
-	if k == nil {
-		return nil, errors.New("stdtemporalcodec: KMS client is required")
-	}
-	if opts.KeyID == "" {
-		return nil, errors.New("stdtemporalcodec: Options.KeyID is required")
+func New(opts Options) (*Codec, error) {
+	if opts.Keyset == nil {
+		return nil, errors.New("stdtemporalcodec: Options.Keyset is required")
 	}
 	if opts.Namespace == "" {
 		return nil, errors.New("stdtemporalcodec: Options.Namespace is required")
 	}
-	return &Codec{kms: k, opts: opts}, nil
+	primitive, err := aead.New(opts.Keyset)
+	if err != nil {
+		return nil, fmt.Errorf("stdtemporalcodec: build aead primitive: %w", err)
+	}
+	return &Codec{aead: primitive, namespace: opts.Namespace}, nil
 }
 
 // Namespace returns the namespace this codec is scoped to.
-func (c *Codec) Namespace() string { return c.opts.Namespace }
-
-// KeyID returns the configured KMS key id.
-func (c *Codec) KeyID() string { return c.opts.KeyID }
+func (c *Codec) Namespace() string { return c.namespace }
 
 // WithNamespace returns a copy of the codec scoped to a different namespace.
 // This is useful on the server side where the namespace is determined per
-// request.
+// request. The underlying Tink AEAD primitive (and keyset) is shared.
 func (c *Codec) WithNamespace(ns string) *Codec {
 	cp := *c
-	cp.opts.Namespace = ns
+	cp.namespace = ns
 	return &cp
 }
 
-// Encode encrypts each payload using a freshly-generated KMS data key and
-// returns new payloads with metadata describing the encryption parameters.
+// Encode encrypts each payload via the Tink AEAD primitive and returns new
+// payloads tagged as MetadataEncodingEncrypted.
 func (c *Codec) Encode(payloads []*commonpb.Payload) ([]*commonpb.Payload, error) {
 	out := make([]*commonpb.Payload, len(payloads))
 	for i, p := range payloads {
-		enc, err := c.encodeOne(context.Background(), p)
+		enc, err := c.encodeOne(p)
 		if err != nil {
 			return nil, fmt.Errorf("encode payload %d: %w", i, err)
 		}
@@ -161,7 +136,7 @@ func (c *Codec) Decode(payloads []*commonpb.Payload) ([]*commonpb.Payload, error
 			out[i] = p
 			continue
 		}
-		dec, err := c.decodeOne(context.Background(), p)
+		dec, err := c.decodeOne(p)
 		if err != nil {
 			return nil, fmt.Errorf("decode payload %d: %w", i, err)
 		}
@@ -170,85 +145,29 @@ func (c *Codec) Decode(payloads []*commonpb.Payload) ([]*commonpb.Payload, error
 	return out, nil
 }
 
-func (c *Codec) encodeOne(ctx context.Context, p *commonpb.Payload) (*commonpb.Payload, error) {
+func (c *Codec) encodeOne(p *commonpb.Payload) (*commonpb.Payload, error) {
 	plaintext, err := proto.Marshal(p)
 	if err != nil {
 		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
-
-	dataKey, err := c.kms.GenerateDataKey(ctx, &kms.GenerateDataKeyInput{
-		KeyId:             aws.String(c.opts.KeyID),
-		KeySpec:           types.DataKeySpecAes256,
-		EncryptionContext: c.encryptionContext(),
-	})
+	ciphertext, err := c.aead.Encrypt(plaintext, c.aad())
 	if err != nil {
-		return nil, fmt.Errorf("kms generate data key: %w", err)
+		return nil, fmt.Errorf("aead encrypt: %w", err)
 	}
-	if len(dataKey.Plaintext) != dekSize {
-		return nil, fmt.Errorf("kms returned data key of unexpected size %d", len(dataKey.Plaintext))
-	}
-
-	block, err := aes.NewCipher(dataKey.Plaintext)
-	if err != nil {
-		return nil, fmt.Errorf("new aes cipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("new gcm: %w", err)
-	}
-
-	nonce := make([]byte, nonceSize)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("read nonce: %w", err)
-	}
-	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-
-	data, err := packEnvelope(dataKey.CiphertextBlob, nonce, ciphertext)
-	if err != nil {
-		return nil, err
-	}
-
 	return &commonpb.Payload{
 		Metadata: map[string][]byte{
 			metadataEncodingKey:      []byte(MetadataEncodingEncrypted),
-			MetadataKeyID:            []byte(c.opts.KeyID),
-			MetadataCipher:           []byte(CipherAES256GCM),
-			MetadataContextNamespace: []byte(c.opts.Namespace),
+			MetadataContextNamespace: []byte(c.namespace),
 		},
-		Data: data,
+		Data: ciphertext,
 	}, nil
 }
 
-func (c *Codec) decodeOne(ctx context.Context, p *commonpb.Payload) (*commonpb.Payload, error) {
-	wrapped, nonce, ciphertext, err := unpackEnvelope(p.GetData())
+func (c *Codec) decodeOne(p *commonpb.Payload) (*commonpb.Payload, error) {
+	plaintext, err := c.aead.Decrypt(p.GetData(), c.aad())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("aead decrypt: %w", err)
 	}
-
-	dataKey, err := c.kms.Decrypt(ctx, &kms.DecryptInput{
-		CiphertextBlob:    wrapped,
-		EncryptionContext: c.encryptionContext(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("kms decrypt data key: %w", err)
-	}
-	if len(dataKey.Plaintext) != dekSize {
-		return nil, fmt.Errorf("kms returned data key of unexpected size %d", len(dataKey.Plaintext))
-	}
-
-	block, err := aes.NewCipher(dataKey.Plaintext)
-	if err != nil {
-		return nil, fmt.Errorf("new aes cipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("new gcm: %w", err)
-	}
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("aes-gcm open: %w", err)
-	}
-
 	out := &commonpb.Payload{}
 	if err := proto.Unmarshal(plaintext, out); err != nil {
 		return nil, fmt.Errorf("unmarshal payload: %w", err)
@@ -256,8 +175,11 @@ func (c *Codec) decodeOne(ctx context.Context, p *commonpb.Payload) (*commonpb.P
 	return out, nil
 }
 
-func (c *Codec) encryptionContext() map[string]string {
-	return map[string]string{encryptionContextNamespaceKey: c.opts.Namespace}
+// aad returns the additional authenticated data binding the namespace into
+// the ciphertext. Decrypting under a different namespace will fail
+// authentication.
+func (c *Codec) aad() []byte {
+	return []byte("namespace=" + c.namespace)
 }
 
 func isEncrypted(p *commonpb.Payload) bool {
@@ -269,39 +191,4 @@ func isEncrypted(p *commonpb.Payload) bool {
 		return false
 	}
 	return string(md[metadataEncodingKey]) == MetadataEncodingEncrypted
-}
-
-// packEnvelope serializes the wire format.
-func packEnvelope(wrappedDEK, nonce, ciphertext []byte) ([]byte, error) {
-	if uint64(len(wrappedDEK)) > uint64(^uint32(0)) {
-		return nil, fmt.Errorf("wrapped data key too large: %d", len(wrappedDEK))
-	}
-	if len(nonce) != nonceSize {
-		return nil, fmt.Errorf("nonce has unexpected size %d", len(nonce))
-	}
-	out := make([]byte, 0, 4+len(wrappedDEK)+nonceSize+len(ciphertext))
-	var hdr [4]byte
-	//nolint:gosec // bounds-checked above.
-	binary.BigEndian.PutUint32(hdr[:], uint32(len(wrappedDEK)))
-	out = append(out, hdr[:]...)
-	out = append(out, wrappedDEK...)
-	out = append(out, nonce...)
-	out = append(out, ciphertext...)
-	return out, nil
-}
-
-// unpackEnvelope parses the wire format.
-func unpackEnvelope(data []byte) (wrappedDEK, nonce, ciphertext []byte, err error) {
-	if len(data) < 4 {
-		return nil, nil, nil, fmt.Errorf("envelope too short: %d bytes", len(data))
-	}
-	wrappedLen := binary.BigEndian.Uint32(data[:4])
-	rest := data[4:]
-	if uint64(len(rest)) < uint64(wrappedLen)+nonceSize {
-		return nil, nil, nil, fmt.Errorf("envelope truncated: wrappedLen=%d, rest=%d", wrappedLen, len(rest))
-	}
-	wrappedDEK = rest[:wrappedLen]
-	nonce = rest[wrappedLen : wrappedLen+nonceSize]
-	ciphertext = rest[wrappedLen+nonceSize:]
-	return wrappedDEK, nonce, ciphertext, nil
 }

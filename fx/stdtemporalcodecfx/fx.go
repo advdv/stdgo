@@ -1,4 +1,4 @@
-// Package stdtemporalcodecfx wires the KMS-backed Temporal payload codec
+// Package stdtemporalcodecfx wires the Tink-backed Temporal payload codec
 // into an fx application.
 //
 // Two composable fx.Options are exposed:
@@ -6,33 +6,38 @@
 //   - Provide() wires the client/worker side. It produces a
 //     converter.DataConverter that stdtemporalfx (or any Temporal client)
 //     installs on its connection. When Config.Enabled is false a no-op
-//     DataConverter is provided so local development works without KMS;
-//     when true, payloads are envelope-encrypted with the configured KMS
-//     key. The KMS client is built from the ambient aws.Config (typically
-//     provided by stdawsfx).
+//     DataConverter is provided so local development works without a
+//     keyset; when true, payloads are encrypted via Tink (AES-256-GCM in
+//     the typical configuration) using the configured keyset.
 //
 //   - ProvideServer() wires the codec HTTP server. It produces an
 //     http.Handler under the fx name tag "codec" implementing Temporal's
 //     remote codec contract (POST /encode and POST /decode). The handler
-//     enforces an allowlist on the X-Namespace request header. The KMS
-//     client is built from the ambient aws.Config.
+//     enforces an allowlist on the X-Namespace request header. Callers are
+//     expected to mount the handler on their own HTTP server.
 //
-// Tests can substitute the KMS dependency by supplying a
-// stdtemporalcodec.KMS directly:
+// The Tink keyset is read from the environment and MUST be the same value
+// across every worker, client and codec-server process for a given
+// namespace set. It is provided as a base64-encoded Tink cleartext keyset
+// in JSON form. To generate one, run:
 //
-//	fx.Supply(fx.Annotate(fakeKMS, fx.As(new(stdtemporalcodec.KMS))))
+//	go run github.com/advdv/stdgo/fx/stdtemporalcodecfx/cmd/stdtemporalcodec-genkeyset
 //
-// When supplied that way it takes precedence over the AWS-built client and
-// aws.Config does not need to be in the graph.
+// and paste the output into STDTEMPORALCODEC_KEYSET (and/or
+// STDTEMPORALCODECSERVER_KEYSET).
 package stdtemporalcodecfx
 
 import (
+	"bytes"
+	"encoding/base64"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec"
 	"github.com/advdv/stdgo/stdfx"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
+	"github.com/tink-crypto/tink-go/v2/keyset"
 	"go.temporal.io/sdk/converter"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -47,17 +52,19 @@ const seedNamespace = "_codec_server_seed_"
 // Config configures the client/worker side of the codec module (Provide).
 // Environment variables are prefixed with STDTEMPORALCODEC_.
 type Config struct {
-	// Enabled toggles KMS encryption of Temporal payloads. When false a
+	// Enabled toggles encryption of Temporal payloads. When false a
 	// pass-through DataConverter is provided so local development works
-	// without KMS. Default false.
+	// without a configured keyset. Default false.
 	Enabled bool `env:"ENABLED"`
 
-	// KMSKeyID is the KMS key ARN or alias used to generate data keys.
-	// Required when Enabled is true.
-	KMSKeyID string `env:"KMS_KEY_ID"`
+	// Keyset is the base64-encoded Tink cleartext keyset (JSON form).
+	// Required when Enabled is true. It MUST be the same value as the
+	// one configured on the codec server and on every other
+	// worker/client in the same namespace.
+	Keyset string `env:"KEYSET"`
 
 	// Namespace is the Temporal namespace this client/worker operates in.
-	// It is bound into the KMS EncryptionContext to enforce cryptographic
+	// It is bound into the AEAD additionalData to enforce cryptographic
 	// tenant isolation. Required when Enabled is true.
 	Namespace string `env:"NAMESPACE"`
 }
@@ -66,11 +73,7 @@ type Config struct {
 type Params struct {
 	fx.In
 
-	Config    Config
-	AWSConfig aws.Config `optional:"true"`
-	// KMS is an optional override for the KMS client. When nil the codec
-	// uses kms.NewFromConfig(AWSConfig). Tests supply a fake here.
-	KMS stdtemporalcodec.KMS `optional:"true"`
+	Config Config
 }
 
 // Result holds the values provided by Provide.
@@ -87,12 +90,12 @@ func New(par Params) (Result, error) {
 	if !par.Config.Enabled {
 		return Result{DataConverter: converter.GetDefaultDataConverter()}, nil
 	}
-	k := par.KMS
-	if k == nil {
-		k = kms.NewFromConfig(par.AWSConfig)
+	handle, err := decodeKeyset(par.Config.Keyset)
+	if err != nil {
+		return Result{}, err
 	}
-	codec, err := stdtemporalcodec.New(k, stdtemporalcodec.Options{
-		KeyID:     par.Config.KMSKeyID,
+	codec, err := stdtemporalcodec.New(stdtemporalcodec.Options{
+		Keyset:    handle,
 		Namespace: par.Config.Namespace,
 	})
 	if err != nil {
@@ -111,9 +114,15 @@ func Provide() fx.Option {
 // ServerConfig configures the codec server (ProvideServer). Environment
 // variables are prefixed with STDTEMPORALCODECSERVER_.
 type ServerConfig struct {
-	// KMSKeyID is the KMS key ARN/alias the codec uses to wrap data keys.
-	// Required.
-	KMSKeyID string `env:"KMS_KEY_ID,required"`
+	// Enabled toggles the codec server. When false a stub handler that
+	// responds 404 to every request is produced under the "codec" name
+	// tag, so consumers can mount it unconditionally. Default false.
+	Enabled bool `env:"ENABLED"`
+
+	// Keyset is the base64-encoded Tink cleartext keyset (JSON form).
+	// Required when Enabled is true. Must match the value used by every
+	// worker/client whose payloads this server is expected to decode.
+	Keyset string `env:"KEYSET"`
 
 	// AllowedNamespaces lists the Temporal namespaces this server will
 	// service. Requests bearing any other (normalized) namespace are
@@ -131,12 +140,8 @@ type ServerConfig struct {
 type ServerParams struct {
 	fx.In
 
-	Config    ServerConfig
-	Logger    *zap.Logger
-	AWSConfig aws.Config `optional:"true"`
-	// KMS is an optional override for the KMS client. When nil the server
-	// uses kms.NewFromConfig(AWSConfig). Tests supply a fake here.
-	KMS stdtemporalcodec.KMS `optional:"true"`
+	Config ServerConfig
+	Logger *zap.Logger
 }
 
 // ServerResult holds the values provided by ProvideServer.
@@ -148,14 +153,21 @@ type ServerResult struct {
 	Handler http.Handler `name:"codec"`
 }
 
-// NewServer constructs the codec server handler.
+// NewServer constructs the codec server handler. When Config.Enabled is
+// false the result handler responds 404 to every request so consumers can
+// mount it unconditionally; they should still gate any CORS / route
+// registration on Enabled if they want to avoid the stub being reachable
+// at all.
 func NewServer(par ServerParams) (ServerResult, error) {
-	k := par.KMS
-	if k == nil {
-		k = kms.NewFromConfig(par.AWSConfig)
+	if !par.Config.Enabled {
+		return ServerResult{Handler: http.NotFoundHandler()}, nil
 	}
-	codec, err := stdtemporalcodec.New(k, stdtemporalcodec.Options{
-		KeyID:     par.Config.KMSKeyID,
+	handle, err := decodeKeyset(par.Config.Keyset)
+	if err != nil {
+		return ServerResult{}, err
+	}
+	codec, err := stdtemporalcodec.New(stdtemporalcodec.Options{
+		Keyset:    handle,
 		Namespace: seedNamespace,
 	})
 	if err != nil {
@@ -182,4 +194,24 @@ func NewServer(par ServerParams) (ServerResult, error) {
 // under the fx name tag "codec". See package documentation for details.
 func ProvideServer() fx.Option {
 	return stdfx.ZapEnvCfgModule[ServerConfig]("stdtemporalcodecserver", NewServer)
+}
+
+// decodeKeyset decodes the configured base64 Tink cleartext keyset JSON and
+// validates that it carries a primary key.
+func decodeKeyset(s string) (*keyset.Handle, error) {
+	if s == "" {
+		return nil, errors.New("stdtemporalcodecfx: keyset is required")
+	}
+	raw, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("stdtemporalcodecfx: decode base64 keyset: %w", err)
+	}
+	handle, err := insecurecleartextkeyset.Read(keyset.NewJSONReader(bytes.NewReader(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("stdtemporalcodecfx: read tink keyset: %w", err)
+	}
+	if handle.KeysetInfo().GetPrimaryKeyId() == 0 {
+		return nil, errors.New("stdtemporalcodecfx: tink keyset has no primary key")
+	}
+	return handle, nil
 }

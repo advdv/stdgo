@@ -2,6 +2,7 @@ package stdtemporalcodecfx_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,17 +11,30 @@ import (
 
 	"github.com/advdv/stdgo/fx/stdtemporalcodecfx"
 	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec"
-	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec/stdtemporalcodectest"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tink-crypto/tink-go/v2/aead"
+	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
+	"github.com/tink-crypto/tink-go/v2/keyset"
 	commonpb "go.temporal.io/api/common/v1"
 	"go.temporal.io/sdk/converter"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 	"google.golang.org/protobuf/encoding/protojson"
 )
+
+// freshKeyset returns a base64-encoded JSON cleartext AES-256-GCM Tink
+// keyset suitable for the STDTEMPORALCODEC*_KEYSET env vars.
+func freshKeyset(t *testing.T) string {
+	t.Helper()
+	handle, err := keyset.NewHandle(aead.AES256GCMKeyTemplate())
+	require.NoError(t, err)
+	var buf bytes.Buffer
+	require.NoError(t, insecurecleartextkeyset.Write(handle, keyset.NewJSONWriter(&buf)))
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
 
 func TestProvide_Disabled_ProvidesDefaultConverter(t *testing.T) {
 	t.Parallel()
@@ -48,18 +62,16 @@ func TestProvide_Disabled_ProvidesDefaultConverter(t *testing.T) {
 func TestProvide_Enabled_ProvidesCodecWrappedConverter(t *testing.T) {
 	t.Parallel()
 
-	fk := stdtemporalcodectest.NewFakeKMS()
 	env := map[string]string{
-		"STDTEMPORALCODEC_ENABLED":    "true",
-		"STDTEMPORALCODEC_KMS_KEY_ID": "arn:aws:kms:us-east-1:123:key/abc",
-		"STDTEMPORALCODEC_NAMESPACE":  "tenant-a",
+		"STDTEMPORALCODEC_ENABLED":   "true",
+		"STDTEMPORALCODEC_KEYSET":    freshKeyset(t),
+		"STDTEMPORALCODEC_NAMESPACE": "tenant-a",
 	}
 
 	var dc converter.DataConverter
 	app := fxtest.New(t,
 		stdenvcfg.ProvideExplicitEnvironment(env),
 		stdzapfx.TestProvide(t),
-		fx.Supply(fx.Annotate(fk, fx.As(new(stdtemporalcodec.KMS)))),
 		stdtemporalcodecfx.Provide(),
 		fx.Populate(&dc),
 	)
@@ -81,16 +93,34 @@ func TestProvide_Enabled_ProvidesCodecWrappedConverter(t *testing.T) {
 	var got string
 	require.NoError(t, dc.FromPayloads(payloads, &got))
 	require.Equal(t, "secret-value", got)
-	require.Positive(t, fk.GenerateCalls.Load())
-	require.Positive(t, fk.DecryptCalls.Load())
+}
+
+func TestProvide_Enabled_RejectsInvalidKeyset(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{
+		"STDTEMPORALCODEC_ENABLED":   "true",
+		"STDTEMPORALCODEC_KEYSET":    "not-base64!!!",
+		"STDTEMPORALCODEC_NAMESPACE": "tenant-a",
+	}
+
+	var dc converter.DataConverter
+	app := fx.New(
+		fx.NopLogger,
+		stdenvcfg.ProvideExplicitEnvironment(env),
+		stdzapfx.TestProvide(t),
+		stdtemporalcodecfx.Provide(),
+		fx.Populate(&dc),
+	)
+	require.Error(t, app.Err())
 }
 
 func TestProvideServer_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	fk := stdtemporalcodectest.NewFakeKMS()
 	env := map[string]string{
-		"STDTEMPORALCODECSERVER_KMS_KEY_ID":         "arn:aws:kms:us-east-1:123:key/abc",
+		"STDTEMPORALCODECSERVER_ENABLED":            "true",
+		"STDTEMPORALCODECSERVER_KEYSET":             freshKeyset(t),
 		"STDTEMPORALCODECSERVER_ALLOWED_NAMESPACES": "tenant-a,tenant-b",
 		"STDTEMPORALCODECSERVER_STRIP_CLOUD_SUFFIX": "true",
 	}
@@ -102,7 +132,6 @@ func TestProvideServer_RoundTrip(t *testing.T) {
 	app := fxtest.New(t,
 		stdenvcfg.ProvideExplicitEnvironment(env),
 		stdzapfx.TestProvide(t),
-		fx.Supply(fx.Annotate(fk, fx.As(new(stdtemporalcodec.KMS)))),
 		stdtemporalcodecfx.ProvideServer(),
 		fx.Populate(&deps),
 	)
@@ -133,9 +162,9 @@ func TestProvideServer_RoundTrip(t *testing.T) {
 func TestProvideServer_RejectsUnknownNamespace(t *testing.T) {
 	t.Parallel()
 
-	fk := stdtemporalcodectest.NewFakeKMS()
 	env := map[string]string{
-		"STDTEMPORALCODECSERVER_KMS_KEY_ID":         "arn:aws:kms:us-east-1:123:key/abc",
+		"STDTEMPORALCODECSERVER_ENABLED":            "true",
+		"STDTEMPORALCODECSERVER_KEYSET":             freshKeyset(t),
 		"STDTEMPORALCODECSERVER_ALLOWED_NAMESPACES": "tenant-a",
 	}
 
@@ -146,7 +175,6 @@ func TestProvideServer_RejectsUnknownNamespace(t *testing.T) {
 	app := fxtest.New(t,
 		stdenvcfg.ProvideExplicitEnvironment(env),
 		stdzapfx.TestProvide(t),
-		fx.Supply(fx.Annotate(fk, fx.As(new(stdtemporalcodec.KMS)))),
 		stdtemporalcodecfx.ProvideServer(),
 		fx.Populate(&deps),
 	)
@@ -158,6 +186,37 @@ func TestProvideServer_RejectsUnknownNamespace(t *testing.T) {
 
 	resp := post(t, srv, "/encode", "tenant-b", marshalPayloads(t, nil))
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+// TestProvideServer_Disabled_ProducesStubHandler proves the default-off
+// path: when STDTEMPORALCODECSERVER_ENABLED is unset (or "false"), the
+// graph still produces a named "codec" http.Handler so consumers can
+// mount it unconditionally — but every request to it must 404. This
+// keeps prod composition roots free of conditional wiring while
+// guaranteeing the codec endpoint is inert until the operator opts in.
+func TestProvideServer_Disabled_ProducesStubHandler(t *testing.T) {
+	t.Parallel()
+
+	var deps struct {
+		fx.In
+		Handler http.Handler `name:"codec"`
+	}
+	app := fxtest.New(t,
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{}),
+		stdzapfx.TestProvide(t),
+		stdtemporalcodecfx.ProvideServer(),
+		fx.Populate(&deps),
+	)
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+	require.NotNil(t, deps.Handler)
+
+	srv := httptest.NewServer(deps.Handler)
+	t.Cleanup(srv.Close)
+
+	resp := post(t, srv, "/encode", "tenant-a", marshalPayloads(t, nil))
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode,
+		"disabled codec server must reject all requests with 404")
 }
 
 // roundTrip POSTs payloads to the given codec endpoint and returns the

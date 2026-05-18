@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec"
-	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec/stdtemporalcodectest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonpb "go.temporal.io/api/common/v1"
@@ -19,16 +18,15 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func newServer(t *testing.T, allowed []string) (*httptest.Server, *stdtemporalcodec.Codec, *stdtemporalcodectest.FakeKMS) {
+func newServer(t *testing.T, allowed []string) (*httptest.Server, *stdtemporalcodec.Codec) {
 	t.Helper()
 	return newServerWith(t, stdtemporalcodec.HandlerOptions{AllowedNamespaces: allowed})
 }
 
-func newServerWith(t *testing.T, opts stdtemporalcodec.HandlerOptions) (*httptest.Server, *stdtemporalcodec.Codec, *stdtemporalcodectest.FakeKMS) {
+func newServerWith(t *testing.T, opts stdtemporalcodec.HandlerOptions) (*httptest.Server, *stdtemporalcodec.Codec) {
 	t.Helper()
-	fk := stdtemporalcodectest.NewFakeKMS()
-	codec, err := stdtemporalcodec.New(fk, stdtemporalcodec.Options{
-		KeyID:     "arn:aws:kms:us-east-1:123:key/abc",
+	codec, err := stdtemporalcodec.New(stdtemporalcodec.Options{
+		Keyset:    freshKeyset(t),
 		Namespace: "unused-default",
 	})
 	require.NoError(t, err)
@@ -39,7 +37,7 @@ func newServerWith(t *testing.T, opts stdtemporalcodec.HandlerOptions) (*httptes
 
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv, codec, fk
+	return srv, codec
 }
 
 func marshalPayloads(t *testing.T, payloads []*commonpb.Payload) []byte {
@@ -81,7 +79,7 @@ func post(t *testing.T, srv *httptest.Server, path, ns string, body []byte) resp
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 
 	input := []*commonpb.Payload{
 		{Metadata: map[string][]byte{"encoding": []byte("json/plain")}, Data: []byte(`{"k":1}`)},
@@ -104,7 +102,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 
 func TestMethodNotAllowed(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 	resp, err := http.Get(srv.URL + "/encode")
 	require.NoError(t, err)
 	t.Cleanup(func() { resp.Body.Close() })
@@ -113,21 +111,21 @@ func TestMethodNotAllowed(t *testing.T) {
 
 func TestUnknownPath(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 	resp := post(t, srv, "/bogus", "tenant-a", []byte("{}"))
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 func TestMissingNamespaceHeader(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 	resp := post(t, srv, "/encode", "", marshalPayloads(t, nil))
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestNamespaceNotAllowed(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 	resp := post(t, srv, "/encode", "tenant-b", marshalPayloads(t, nil))
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Contains(t, string(resp.Body), "tenant-b")
@@ -135,21 +133,21 @@ func TestNamespaceNotAllowed(t *testing.T) {
 
 func TestEmptyAllowlistRejectsAll(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, nil)
+	srv, _ := newServer(t, nil)
 	resp := post(t, srv, "/encode", "tenant-a", marshalPayloads(t, nil))
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 func TestMalformedBody(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 	resp := post(t, srv, "/encode", "tenant-a", []byte("not-json"))
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestRouteSuffixMatching(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a"})
+	srv, _ := newServer(t, []string{"tenant-a"})
 
 	// Mounted under arbitrary prefix should still route based on suffix.
 	resp := post(t, srv, "/some/prefix/encode", "tenant-a", marshalPayloads(t, nil))
@@ -172,7 +170,7 @@ func TestStripCloudAccountSuffix(t *testing.T) {
 
 func TestNamespaceNormalizerStripsSuffix(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
+	srv, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
 		AllowedNamespaces:  []string{"tenant-a"},
 		NormalizeNamespace: stdtemporalcodec.StripCloudAccountSuffix,
 	})
@@ -196,7 +194,7 @@ func TestNamespaceNormalizerStripsSuffix(t *testing.T) {
 
 func TestNamespaceNormalizerStillEnforcesAllowlist(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
+	srv, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
 		AllowedNamespaces:  []string{"tenant-a"},
 		NormalizeNamespace: stdtemporalcodec.StripCloudAccountSuffix,
 	})
@@ -208,7 +206,7 @@ func TestNamespaceNormalizerStillEnforcesAllowlist(t *testing.T) {
 func TestLoggerEmitsAuthDenial(t *testing.T) {
 	t.Parallel()
 	core, recorded := observer.New(zap.WarnLevel)
-	srv, _, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
+	srv, _ := newServerWith(t, stdtemporalcodec.HandlerOptions{
 		AllowedNamespaces: []string{"tenant-a"},
 		Logger:            zap.New(core),
 	})
@@ -223,7 +221,7 @@ func TestLoggerEmitsAuthDenial(t *testing.T) {
 
 func TestDecodeNamespaceMismatchFails(t *testing.T) {
 	t.Parallel()
-	srv, _, _ := newServer(t, []string{"tenant-a", "tenant-b"})
+	srv, _ := newServer(t, []string{"tenant-a", "tenant-b"})
 
 	input := []*commonpb.Payload{
 		{Metadata: map[string][]byte{"encoding": []byte("json/plain")}, Data: []byte(`"x"`)},
@@ -237,6 +235,6 @@ func TestDecodeNamespaceMismatchFails(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, decResp.StatusCode)
 	body := strings.ToLower(string(decResp.Body))
 	assert.True(t,
-		strings.Contains(body, "context") || strings.Contains(body, "decrypt") || strings.Contains(body, "hmac"),
+		strings.Contains(body, "decrypt") || strings.Contains(body, "auth") || strings.Contains(body, "aead"),
 		"expected decryption-related error, got %q", body)
 }

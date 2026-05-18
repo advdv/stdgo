@@ -66,7 +66,7 @@ func New(par struct {
 
 	// DataConverter is optional. When provided it is installed on the
 	// underlying Temporal client so that all payloads are processed
-	// through it (e.g. KMS envelope encryption from stdtemporalcodecfx).
+	// through it (e.g. the Tink AEAD codec from stdtemporalcodecfx).
 	DataConverter converter.DataConverter `optional:"true"`
 },
 ) (*Temporal, error) {
