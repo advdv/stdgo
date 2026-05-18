@@ -17,6 +17,7 @@ import (
 	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/interceptor"
 	tlog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/workflow"
@@ -46,8 +47,9 @@ type Temporal struct {
 	c         client.Client
 	nsClient  client.NamespaceClient
 
-	propagators  []workflow.ContextPropagator
-	interceptors []interceptor.ClientInterceptor
+	propagators   []workflow.ContextPropagator
+	interceptors  []interceptor.ClientInterceptor
+	dataConverter converter.DataConverter
 }
 
 // New inits the Temporal client.
@@ -61,13 +63,19 @@ func New(par struct {
 	// propagators and interceptrs, the order matter so we can't use value groups (directly).
 	Propagators  []workflow.ContextPropagator    `optional:"true"`
 	Interceptors []interceptor.ClientInterceptor `optional:"true"`
+
+	// DataConverter is optional. When provided it is installed on the
+	// underlying Temporal client so that all payloads are processed
+	// through it (e.g. KMS envelope encryption from stdtemporalcodecfx).
+	DataConverter converter.DataConverter `optional:"true"`
 },
 ) (*Temporal, error) {
 	c := &Temporal{
-		cfg:          par.Config,
-		logs:         par.Logger,
-		propagators:  par.Propagators,
-		interceptors: par.Interceptors,
+		cfg:           par.Config,
+		logs:          par.Logger,
+		propagators:   par.Propagators,
+		interceptors:  par.Interceptors,
+		dataConverter: par.DataConverter,
 	}
 
 	par.Append(fx.Hook{
@@ -118,6 +126,7 @@ func (c *Temporal) Start(ctx context.Context) (err error) {
 		Namespace:          c.namespace,
 		ContextPropagators: c.propagators,
 		Interceptors:       c.interceptors,
+		DataConverter:      c.dataConverter,
 	}
 
 	if c.cfg.TemporalAPIKey != "" {
