@@ -16,28 +16,33 @@
 //     enforces an allowlist on the X-Namespace request header. Callers are
 //     expected to mount the handler on their own HTTP server.
 //
-// The Tink keyset is read from the environment and MUST be the same value
-// across every worker, client and codec-server process for a given
-// namespace set. It is provided as a base64-encoded Tink cleartext keyset
-// in JSON form. To generate one, run:
+// # Keyset backends
 //
-//	go run github.com/advdv/stdgo/fx/stdtemporalcodecfx/cmd/stdtemporalcodec-genkeyset
+// The base64-encoded Tink keyset configured via the *_KEYSET environment
+// variable may be either:
 //
-// and paste the output into STDTEMPORALCODEC_KEYSET (and/or
-// STDTEMPORALCODECSERVER_KEYSET).
+//   - A cleartext JSON keyset (the default; suitable for local dev). Set
+//     *_KEYSET and leave *_KEYSET_KEK_URI empty.
+//
+//   - A KMS-wrapped JSON keyset, sealed by a KEK living in a remote KMS.
+//     Set *_KEYSET to the wrapped blob and *_KEYSET_KEK_URI to the KEK
+//     URI. URIs prefixed with "aws-kms://" select the AWS KMS backend; the
+//     KEK is dereferenced via the standard aws-sdk-go-v2 chain (or via a
+//     custom KMS client injected through fx as an optional dependency).
+//
+// In both cases the keyset is shipped as a single base64 blob via env or
+// secrets manager; only the KEK URI env var differentiates the two modes.
+// The CLI in cmd/stdtemporalcodec-genkeyset grows a --kek-uri flag to
+// emit a KMS-wrapped keyset.
 package stdtemporalcodecfx
 
 import (
-	"bytes"
-	"encoding/base64"
+	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/advdv/stdgo/fx/stdtemporalcodecfx/stdtemporalcodec"
 	"github.com/advdv/stdgo/stdfx"
-	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
-	"github.com/tink-crypto/tink-go/v2/keyset"
 	"go.temporal.io/sdk/converter"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -57,11 +62,18 @@ type Config struct {
 	// without a configured keyset. Default false.
 	Enabled bool `env:"ENABLED"`
 
-	// Keyset is the base64-encoded Tink cleartext keyset (JSON form).
-	// Required when Enabled is true. It MUST be the same value as the
-	// one configured on the codec server and on every other
-	// worker/client in the same namespace.
+	// Keyset is the base64-encoded Tink keyset (JSON form). When
+	// KeysetKEKURI is empty it must be a cleartext keyset; otherwise it
+	// must be a keyset wrapped by the KEK at KeysetKEKURI. Required when
+	// Enabled is true. It MUST match the value configured on the codec
+	// server and on every other worker/client in the same namespace.
 	Keyset string `env:"KEYSET"`
+
+	// KeysetKEKURI optionally selects the keyset backend. Leave empty for
+	// a cleartext keyset (local dev); set to e.g.
+	// "aws-kms://arn:aws:kms:<region>:<acct>:key/<id>" to unwrap Keyset
+	// via AWS KMS.
+	KeysetKEKURI string `env:"KEYSET_KEK_URI"`
 
 	// Namespace is the Temporal namespace this client/worker operates in.
 	// It is bound into the AEAD additionalData to enforce cryptographic
@@ -74,6 +86,11 @@ type Params struct {
 	fx.In
 
 	Config Config
+
+	// KMS is optional. When the configured keyset backend is AWS KMS and
+	// no KMS is provided, a default *kms.Client constructed from the
+	// ambient AWS SDK configuration is used. Tests inject a mock here.
+	KMS KMS `optional:"true"`
 }
 
 // Result holds the values provided by Provide.
@@ -90,7 +107,10 @@ func New(par Params) (Result, error) {
 	if !par.Config.Enabled {
 		return Result{DataConverter: converter.GetDefaultDataConverter()}, nil
 	}
-	handle, err := decodeKeyset(par.Config.Keyset)
+	if par.Config.Namespace == "" {
+		return Result{}, errors.New("stdtemporalcodecfx: Config.Namespace is required when Enabled is true")
+	}
+	handle, err := loadKeyset(context.Background(), par.Config.Keyset, par.Config.KeysetKEKURI, par.KMS)
 	if err != nil {
 		return Result{}, err
 	}
@@ -119,10 +139,15 @@ type ServerConfig struct {
 	// tag, so consumers can mount it unconditionally. Default false.
 	Enabled bool `env:"ENABLED"`
 
-	// Keyset is the base64-encoded Tink cleartext keyset (JSON form).
-	// Required when Enabled is true. Must match the value used by every
-	// worker/client whose payloads this server is expected to decode.
+	// Keyset is the base64-encoded Tink keyset (JSON form). When
+	// KeysetKEKURI is empty it must be a cleartext keyset; otherwise it
+	// must be a keyset wrapped by the KEK at KeysetKEKURI. Required when
+	// Enabled is true. Must match the value used by every worker/client
+	// whose payloads this server is expected to decode.
 	Keyset string `env:"KEYSET"`
+
+	// KeysetKEKURI mirrors Config.KeysetKEKURI for the server side.
+	KeysetKEKURI string `env:"KEYSET_KEK_URI"`
 
 	// AllowedNamespaces lists the Temporal namespaces this server will
 	// service. Requests bearing any other (normalized) namespace are
@@ -142,6 +167,11 @@ type ServerParams struct {
 
 	Config ServerConfig
 	Logger *zap.Logger
+
+	// KMS is optional. When the configured keyset backend is AWS KMS and
+	// no KMS is provided, a default *kms.Client constructed from the
+	// ambient AWS SDK configuration is used. Tests inject a mock here.
+	KMS KMS `optional:"true"`
 }
 
 // ServerResult holds the values provided by ProvideServer.
@@ -162,7 +192,7 @@ func NewServer(par ServerParams) (ServerResult, error) {
 	if !par.Config.Enabled {
 		return ServerResult{Handler: http.NotFoundHandler()}, nil
 	}
-	handle, err := decodeKeyset(par.Config.Keyset)
+	handle, err := loadKeyset(context.Background(), par.Config.Keyset, par.Config.KeysetKEKURI, par.KMS)
 	if err != nil {
 		return ServerResult{}, err
 	}
@@ -194,24 +224,4 @@ func NewServer(par ServerParams) (ServerResult, error) {
 // under the fx name tag "codec". See package documentation for details.
 func ProvideServer() fx.Option {
 	return stdfx.ZapEnvCfgModule[ServerConfig]("stdtemporalcodecserver", NewServer)
-}
-
-// decodeKeyset decodes the configured base64 Tink cleartext keyset JSON and
-// validates that it carries a primary key.
-func decodeKeyset(s string) (*keyset.Handle, error) {
-	if s == "" {
-		return nil, errors.New("stdtemporalcodecfx: keyset is required")
-	}
-	raw, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("stdtemporalcodecfx: decode base64 keyset: %w", err)
-	}
-	handle, err := insecurecleartextkeyset.Read(keyset.NewJSONReader(bytes.NewReader(raw)))
-	if err != nil {
-		return nil, fmt.Errorf("stdtemporalcodecfx: read tink keyset: %w", err)
-	}
-	if handle.KeysetInfo().GetPrimaryKeyId() == 0 {
-		return nil, errors.New("stdtemporalcodecfx: tink keyset has no primary key")
-	}
-	return handle, nil
 }

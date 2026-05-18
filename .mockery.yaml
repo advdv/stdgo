@@ -10,3 +10,6 @@ packages:
   github.com/advdv/stdgo/stdlambda:
     interfaces:
       Lambda: {}
+  github.com/advdv/stdgo/fx/stdtemporalcodecfx:
+    interfaces:
+      KMS: {}
