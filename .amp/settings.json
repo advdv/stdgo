@@ -64,6 +64,11 @@
       "tool": "Bash",
       "matches": { "cmd": "*sleep *" },
       "action": "allow"
+    },
+    {
+      "tool": "Bash",
+      "matches": { "cmd": "*rg *" },
+      "action": "allow"
     }
   ],
   "amp.mcpServers": {
