@@ -132,10 +132,6 @@ func Transact1[T Tx, U any](
 				return res, fmt.Errorf("commit transaction: %w", cerr)
 			}
 
-			if !txr.opts.readOnly {
-				noteWriteObserved(ctx)
-			}
-
 			return res, nil
 		})
 }

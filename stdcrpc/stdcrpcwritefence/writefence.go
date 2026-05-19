@@ -1,19 +1,35 @@
-// Package stdentwritefence provides an HTTP middleware that gives a
-// client read-your-writes consistency against an ro/rw transactor
-// pair without any server-side state.
+// Package stdcrpcwritefence gives a client read-your-writes consistency
+// against an ro/rw transactor pair without any server-side state.
 //
-// It glues two seams that already exist in [stdent]:
+// It is composed of two pieces that share a single, package-private
+// ctx flag:
 //
-//   - [stdent.WithReadPromotion] — stamped on a request ctx when the
-//     incoming request carries a valid, unexpired write-fence
-//     cookie; [stdent.TransactR] / [stdent.TransactR0] then route
-//     reads to the rw transactor for the duration of that request.
+//   - [Middleware] — an HTTP middleware that
+//     (a) verifies the inbound write-fence cookie and, on success,
+//     hands the request ctx to a caller-supplied promoter
+//     ([WithReadPromotion]) — typically `stdent.WithReadPromotion` —
+//     so a subsequent transact call can route the read to the rw
+//     transactor, and
+//     (b) installs a fresh fence-intent flag on the request ctx;
+//     on the way out, if anything flipped that flag, the middleware
+//     pins a freshly-signed cookie on the response BEFORE the status
+//     line is flushed.
 //
-//   - [stdent.WithWriteObserver] — installed on every request ctx
-//     before the handler runs; flipped by [stdent.Transact1] on the
-//     first successful commit of a non-read-only transactor. The
-//     middleware inspects the bit on the way out and pins a fresh
-//     cookie on the response when it is set.
+//   - [Interceptor] — a server-side ConnectRPC unary interceptor
+//     that flips the fence-intent flag whenever the inbound
+//     procedure's idempotency level is anything other than
+//     NO_SIDE_EFFECTS and the handler returned nil. The decision is
+//     read straight off [connect.Spec.IdempotencyLevel], which is in
+//     turn driven by the procedure's `idempotency_level` proto
+//     annotation — no codegen, no bespoke annotation, and no
+//     handler-body changes required.
+//
+// The package is intentionally not tied to ent: the write-detection
+// side is purely wire-level (the interceptor) and the read-side
+// ctx stamp is delegated to a caller-supplied hook via
+// [WithReadPromotion]. The composition root supplies the concrete
+// promoter (typically `stdent.WithReadPromotion`) at wiring time —
+// keeping this package free of any ent / transactor dependency.
 //
 // The cookie payload is opaque and trivial (a fixed string). All the
 // trust lives in the HMAC signature and the [securecookie.MaxAge]
@@ -21,25 +37,20 @@
 // client from forging or extending the window, the embedded
 // timestamp prevents replay past the configured TTL.
 //
-// The middleware is deliberately independent of any tenancy /
-// per-tenant Postgres role concerns — those live in
-// fx/stdcrpcenttenancyfx and compose on top of stdent. This package
-// only knows about pool routing; it is reusable by any caller that
-// has an ro / rw pair behind two [stdent.Transactor] instances.
-//
 // Failure mode for cookie verification is fail-open: any error
 // (cookie missing, malformed, tampered, expired) is treated as "no
 // promotion". The middleware never short-circuits the request and
 // never writes to the response except to add the Set-Cookie header
 // when a write was observed.
-package stdentwritefence
+package stdcrpcwritefence
 
 import (
+	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/advdv/stdgo/stdent"
 	"github.com/felixge/httpsnoop"
 	"github.com/gorilla/securecookie"
 )
@@ -67,6 +78,47 @@ const (
 	cookieValue = "1"
 )
 
+// fenceIntentKey is the unexported context key stamped on every
+// request ctx by [Middleware] and flipped by [Interceptor] (or by
+// any caller that explicitly invokes [MarkFenceIntent]). Kept
+// unexported on purpose: the only legitimate flippers are the
+// interceptor and [MarkFenceIntent], the only legitimate reader is
+// the middleware. Both live in this package — no opaque cross-package
+// surface.
+type fenceIntentKey struct{}
+
+// withFenceIntent attaches a fresh fence-intent flag to ctx and
+// returns it. Middleware-internal: the returned pointer is the one
+// the middleware inspects on the way out. Callers that want to flip
+// the flag go through [MarkFenceIntent].
+func withFenceIntent(ctx context.Context) (context.Context, *atomic.Bool) {
+	b := &atomic.Bool{}
+
+	return context.WithValue(ctx, fenceIntentKey{}, b), b
+}
+
+// MarkFenceIntent flips the fence-intent flag attached to ctx by
+// [Middleware], if any. The [Interceptor] is the canonical flipper
+// and covers every Connect handler whose procedure is not annotated
+// `idempotency_level = NO_SIDE_EFFECTS`. This helper exists for the
+// rare case where a non-Connect code path knows it wrote and wants
+// the same fence semantics — e.g. a hand-rolled HTTP handler that
+// mutates state outside the Connect chain.
+//
+// A no-op (one ctx lookup, type assertion fails) when no fence
+// intent is attached, so callers outside an HTTP request scope (CLI
+// bootstrap, Temporal activities, tests) are unaffected.
+//
+// Symmetry with [stdent.WithReadPromotion]: the read side exports a
+// public ctx stamper (stamp from anywhere, consumed by the routing
+// helpers), the write side exports a public marker (mark from
+// anywhere, consumed by this package's middleware).
+func MarkFenceIntent(ctx context.Context) {
+	if b, ok := ctx.Value(fenceIntentKey{}).(*atomic.Bool); ok {
+		b.Store(true)
+	}
+}
+
 type config struct {
 	cookieName string
 	path       string
@@ -75,6 +127,7 @@ type config struct {
 	secure     bool
 	httpOnly   bool
 	ttl        time.Duration
+	promote    func(context.Context) context.Context
 }
 
 // Option configures a [Middleware].
@@ -109,9 +162,30 @@ func WithInsecure() Option { return func(c *config) { c.secure = false } }
 // old cookie.
 func WithTTL(d time.Duration) Option { return func(c *config) { c.ttl = d } }
 
+// WithReadPromotion sets the ctx promoter the middleware invokes on
+// a successful cookie verification. The promoter returns a derived
+// ctx that downstream code (typically `stdent.TransactR` /
+// `stdent.TransactR0`) consults to route the read to the rw
+// transactor.
+//
+// Composition roots wire this with `stdent.WithReadPromotion` (or
+// any equivalent ctx stamp from a different routing layer). Leaving
+// it unset means the middleware verifies the cookie but does not
+// modify ctx — useful when the cookie is only there to drive
+// fence-intent reasoning and routing is handled elsewhere.
+//
+// Keeping the promoter behind an option is the single seam by which
+// this package avoids a hard dependency on stdent: the read-side
+// stamp is injected by the caller, the write-side flag is owned
+// here.
+func WithReadPromotion(promote func(context.Context) context.Context) Option {
+	return func(c *config) { c.promote = promote }
+}
+
 // Middleware builds an HTTP middleware that implements
-// cookie-based read-your-writes routing on top of [stdent]'s
-// read-promotion and write-observer seams.
+// cookie-based read-your-writes routing on top of this package's
+// fence-intent flag and a caller-supplied ctx promoter (see
+// [WithReadPromotion]).
 //
 // hashKey is the HMAC-SHA-256 key used to sign / verify cookies.
 // It MUST be at least [MinHashKeyLen] bytes; shorter keys panic at
@@ -123,23 +197,22 @@ func WithTTL(d time.Duration) Option { return func(c *config) { c.ttl = d } }
 // The returned middleware:
 //
 //  1. Reads the configured cookie from the request; on a verified,
-//     unexpired cookie it calls [stdent.WithReadPromotion] on
-//     ctx so a subsequent [stdent.TransactR] / [stdent.TransactR0]
-//     opens against the rw transactor instead of the ro one.
+//     unexpired cookie it hands ctx to the promoter supplied via
+//     [WithReadPromotion] (if any) so a subsequent transact call
+//     can open against the rw transactor instead of the ro one.
 //
-//  2. Installs a fresh [stdent.WithWriteObserver] on ctx so any
-//     successful non-read-only commit during the handler is
-//     observable.
+//  2. Installs a fresh fence-intent flag on ctx so any caller down
+//     the stack (canonically [Interceptor], optionally
+//     [MarkFenceIntent]) can request a cookie pin.
 //
 //  3. Wraps the [http.ResponseWriter] so that the first call to
 //     WriteHeader or Write (whichever lands first) — or, failing
-//     either, the moment the handler returns — checks the observer
-//     and, if a write was observed, adds a freshly-signed cookie
-//     to the response headers BEFORE the status line is flushed to
-//     the wire.
+//     either, the moment the handler returns — checks the flag
+//     and, if set, adds a freshly-signed cookie to the response
+//     headers BEFORE the status line is flushed to the wire.
 func Middleware(hashKey []byte, opts ...Option) func(http.Handler) http.Handler {
 	if len(hashKey) < MinHashKeyLen {
-		panic("stdentwritefence: hashKey must be at least 32 bytes")
+		panic("stdcrpcwritefence: hashKey must be at least 32 bytes")
 	}
 
 	cfg := config{
@@ -166,27 +239,29 @@ func Middleware(hashKey []byte, opts ...Option) func(http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
-			// Read side — verify the cookie and, on success, stamp
-			// the promotion bit on ctx. Any failure (missing,
-			// malformed, signature mismatch, expired) is silently
-			// treated as "no promotion": the middleware never writes
-			// to the response on the read path.
+			// Read side — verify the cookie and, on success, hand
+			// ctx to the caller-supplied promoter (if any). Any
+			// failure (missing, malformed, signature mismatch,
+			// expired) is silently treated as "no promotion": the
+			// middleware never writes to the response on the read
+			// path.
 			if c, err := r.Cookie(cfg.cookieName); err == nil {
 				var v string
-				if err := codec.Decode(cfg.cookieName, c.Value, &v); err == nil {
-					ctx = stdent.WithReadPromotion(ctx)
+				if err := codec.Decode(cfg.cookieName, c.Value, &v); err == nil && cfg.promote != nil {
+					ctx = cfg.promote(ctx)
 				}
 			}
 
-			// Write side — install the observer that stdent.Transact1
-			// will flip on a successful non-read-only commit.
-			ctx, obs := stdent.WithWriteObserver(ctx)
+			// Write side — install the fence-intent flag that
+			// [Interceptor] (or [MarkFenceIntent]) will flip when
+			// the procedure's idempotency level demands a fence.
+			ctx, intent := withFenceIntent(ctx)
 
 			var once sync.Once
 
 			setCookie := func() {
 				once.Do(func() {
-					if !obs.Load() {
+					if !intent.Load() {
 						return
 					}
 
