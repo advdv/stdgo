@@ -2,6 +2,7 @@
 # golangci-lint must be listed before go so it takes precedence on PATH
 # over any binary installed via `go install`
 golangci-lint = "latest"
+"npm:@ampcode/cli" = { version = "latest", npm_args = "--ignore-scripts=false" }
 go = "latest"
 amp = "latest"
 mage = "latest"
