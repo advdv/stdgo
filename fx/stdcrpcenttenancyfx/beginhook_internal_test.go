@@ -35,6 +35,13 @@ type stubTenantID string
 
 func (s stubTenantID) TenantIDFromContext(context.Context) string { return string(s) }
 
+// stubSubject is a [SubjectResolver] sibling of stubTenantID: a fixed
+// value regardless of ctx, in place of the production binding (which
+// reads stdcrpcauthfx.Claims.Subject).
+type stubSubject string
+
+func (s stubSubject) SubjectFromContext(context.Context) string { return string(s) }
+
 // testCfg returns a Config with deliberately-distinct role names so test
 // assertions cannot accidentally cross-match.
 func testCfg() Config {
@@ -43,6 +50,7 @@ func testCfg() Config {
 		SystemDatabaseRole:    "sys_role",
 		WebUserDatabaseRole:   "web_role",
 		TenantIDGUC:           "access.tenant_id",
+		SubjectGUC:            "access.subject",
 	}
 }
 
@@ -57,6 +65,23 @@ func newAuthorize(t *testing.T, cfg Config, tenantID TenantIDResolver) (*Authori
 	t.Helper()
 
 	res, err := New(Params{Config: cfg, Logs: zap.NewNop(), TenantID: tenantID})
+	require.NoError(t, err)
+
+	return res.Authorize, res.BeginHook
+}
+
+// newAuthorizeWithSubject mirrors newAuthorize with the OPTIONAL
+// [SubjectResolver] wired, the way a composition root that opts into
+// subject attribution does. Kept as a separate constructor (rather
+// than a nil-able parameter on newAuthorize) so the many existing
+// resolver-less tests double as the "no resolver wired → no subject
+// set_config" regression suite without edits.
+func newAuthorizeWithSubject(
+	t *testing.T, cfg Config, tenantID TenantIDResolver, subject SubjectResolver,
+) (*Authorize, stdent.BeginHookFunc) {
+	t.Helper()
+
+	res, err := New(Params{Config: cfg, Logs: zap.NewNop(), TenantID: tenantID, Subject: subject})
 	require.NoError(t, err)
 
 	return res.Authorize, res.BeginHook
@@ -136,6 +161,68 @@ func TestBeginHook_webuser_with_empty_tenant_emits_empty_string(t *testing.T) {
 
 	assert.Equal(t,
 		`SELECT set_config('access.tenant_id', '', true); SET LOCAL ROLE "web_role"; `,
+		got)
+}
+
+func TestBeginHook_webuser_with_subject_emits_both_gucs(t *testing.T) {
+	t.Parallel()
+
+	_, hook := newAuthorizeWithSubject(t, testCfg(), stubTenantID("org_ABC"), stubSubject("auth0|user1"))
+
+	got := runHook(t, hook, t.Context(), DatabaseRoleWebuser)
+
+	assert.Equal(t,
+		`SELECT set_config('access.tenant_id', 'org_ABC', true); `+
+			`SELECT set_config('access.subject', 'auth0|user1', true); `+
+			`SET LOCAL ROLE "web_role"; `,
+		got,
+		"webuser path with an authenticated caller must stamp tenant THEN subject before the role switch")
+}
+
+func TestBeginHook_sysuser_with_subject_emits_subject_guc(t *testing.T) {
+	t.Parallel()
+
+	// The asymmetry under test: sysuser emits NO tenant GUC (BYPASSRLS
+	// makes the authorizing GUC moot) but DOES emit the subject GUC —
+	// attribution is informational and an authenticated caller on a
+	// BYPASSRLS path (admin RPCs, activities with propagated claims)
+	// still deserves it.
+	_, hook := newAuthorizeWithSubject(t, testCfg(), stubTenantID(""), stubSubject("client_M2M@clients"))
+
+	got := runHook(t, hook, t.Context(), DatabaseRoleSysuser)
+
+	assert.Equal(t,
+		`SELECT set_config('access.subject', 'client_M2M@clients', true); SET LOCAL ROLE "sys_role"; `,
+		got)
+}
+
+func TestBeginHook_empty_subject_emits_no_subject_guc(t *testing.T) {
+	t.Parallel()
+
+	// Opposite sentinel convention to the tenant id: an empty subject
+	// must OMIT the set_config entirely (unset GUC → SQL NULL under
+	// missing_ok → the trigger-side "no authenticated caller" signal),
+	// never emit an empty string.
+	_, hook := newAuthorizeWithSubject(t, testCfg(), stubTenantID("org_ABC"), stubSubject(""))
+
+	got := runHook(t, hook, t.Context(), DatabaseRoleWebuser)
+
+	assert.Equal(t,
+		`SELECT set_config('access.tenant_id', 'org_ABC', true); SET LOCAL ROLE "web_role"; `,
+		got)
+}
+
+func TestBeginHook_subject_with_embedded_single_quote_is_quoted(t *testing.T) {
+	t.Parallel()
+
+	// JWT sub values are attacker-influenced strings; an embedded
+	// single quote must not terminate the literal early.
+	_, hook := newAuthorizeWithSubject(t, testCfg(), stubTenantID(""), stubSubject("o'brien"))
+
+	got := runHook(t, hook, t.Context(), DatabaseRoleSysuser)
+
+	assert.Equal(t,
+		`SELECT set_config('access.subject', 'o''brien', true); SET LOCAL ROLE "sys_role"; `,
 		got)
 }
 

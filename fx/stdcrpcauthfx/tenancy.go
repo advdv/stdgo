@@ -47,3 +47,25 @@ func ProvideTenantIDResolver() fx.Option {
 		})
 	})
 }
+
+// ProvideSubjectResolver returns an fx.Option that wires a
+// [stdcrpcenttenancyfx.SubjectResolver] backed by the JWT `sub` claim
+// stamped on ctx by this package's authn middleware (see
+// [Claims.Subject] / [ClaimsFromContext]) — the sibling of
+// [ProvideTenantIDResolver] for the subject GUC.
+//
+// Wiring it opts every transaction the tenancy BeginHook manages into
+// `set_config('<SubjectGUC>', <sub>, true)` whenever a caller is
+// authenticated — on every role posture, sysuser included, and across
+// the Temporal boundary when stdcrpcauthtemporalfx propagates the
+// claims — so database audit/changelog triggers can attribute row
+// mutations to the caller. Unauthenticated paths emit nothing: the
+// unset GUC reads as SQL NULL, the trigger-side signal for
+// system-initiated work.
+func ProvideSubjectResolver() fx.Option {
+	return fx.Provide(func() stdcrpcenttenancyfx.SubjectResolver {
+		return stdcrpcenttenancyfx.SubjectResolverFunc(func(ctx context.Context) string {
+			return ClaimsFromContext(ctx).Subject
+		})
+	})
+}

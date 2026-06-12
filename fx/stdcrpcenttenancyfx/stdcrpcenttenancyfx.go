@@ -36,6 +36,15 @@
 //     resolver to a JWT claim, an API-key lookup, or anything else
 //     is the composition root's job, not stdcrpcenttenancyfx's.
 //
+// Orthogonal to the role switch, the hook can also stamp the
+// authenticated caller's identity — conventionally the JWT `sub`
+// claim (RFC 7519) — into [Config.SubjectGUC], when the OPTIONAL
+// [SubjectResolver] is wired and yields a non-empty value. Unlike the
+// tenant GUC this is emitted on EVERY role posture (sysuser included):
+// the value is informational attribution for database audit triggers,
+// never an authorization input, so the "BYPASSRLS makes the GUC moot"
+// reasoning does not apply to it. See [SubjectResolver].
+//
 // `SET LOCAL` is transaction-scoped and reverts at COMMIT/ROLLBACK, so
 // the role switch and the GUC are scoped to exactly the transaction
 // the hook fires on; the underlying connection (typically a
@@ -89,6 +98,19 @@ type Config struct {
 	// particular tenant shape (organization, workspace, account, …).
 	// Override only if a different name is needed for compatibility.
 	TenantIDGUC string `env:"TENANT_ID_GUC" envDefault:"access.tenant_id"`
+	// SubjectGUC is the Postgres custom GUC name written via `set_config`
+	// on transaction begin to carry the authenticated caller's opaque
+	// identity — conventionally the JWT `sub` claim (RFC 7519), hence
+	// the name. Unlike [Config.TenantIDGUC] the value is INFORMATIONAL
+	// attribution (read by audit/changelog triggers via
+	// `current_setting(SubjectGUC, true)`), never an authorization
+	// input, so it is emitted on every role posture — but ONLY when the
+	// optional [SubjectResolver] is wired and yields a non-empty value.
+	// Otherwise the statement is omitted entirely: the unset GUC reads
+	// as SQL NULL under missing_ok, and that absence — not an
+	// empty-string sentinel — is the signal for "no authenticated
+	// caller" (system-initiated work, scheduled workflows).
+	SubjectGUC string `env:"SUBJECT_GUC" envDefault:"access.subject"`
 }
 
 // DatabaseRole is the Postgres role posture an RPC method runs in.
@@ -147,6 +169,7 @@ func (r DatabaseRole) String() string {
 type Authorize struct {
 	cfg      Config
 	tenantID TenantIDResolver
+	subject  SubjectResolver
 }
 
 // ErrUnmanagedTransaction is returned by [Authorize.BeginHook] when a
@@ -194,10 +217,12 @@ var ErrMissingDatabaseRole = errors.New(
 
 // BeginHook is the [stdent.BeginHookFunc] this package contributes. It
 // appends `SET LOCAL ROLE` plus (when the role is webuser) a
-// `set_config` of the [Config.TenantIDGUC] to the transaction's setup
-// SQL. The hook signature requires us to APPEND to sqlb and return
-// the same builder; the stdent driver flushes the accumulated SQL
-// inside the transaction.
+// `set_config` of the [Config.TenantIDGUC] — and, independent of the
+// role, a `set_config` of the [Config.SubjectGUC] when the optional
+// [SubjectResolver] is wired and yields a non-empty value — to the
+// transaction's setup SQL. The hook signature requires us to APPEND
+// to sqlb and return the same builder; the stdent driver flushes the
+// accumulated SQL inside the transaction.
 //
 // Two runtime backstops fire here as defense-in-depth against
 // developers calling stdent.Transact* directly (see [managedTxKey]
@@ -232,6 +257,20 @@ func (a *Authorize) BeginHook(
 	if gucValue != nil {
 		fmt.Fprintf(sqlb, `SELECT set_config(%s, %s, true); `,
 			sqlQuoteLiteral(a.cfg.TenantIDGUC), sqlQuoteLiteral(*gucValue))
+	}
+
+	// Deliberately OUTSIDE the role switch in [Authorize.resolve]: the
+	// subject is attribution, not authorization, so a sysuser tx
+	// initiated by an authenticated caller (admin RPCs, Temporal
+	// activities carrying propagated claims) is stamped too. An empty
+	// subject emits nothing — the unset GUC reads as SQL NULL under
+	// current_setting(..., true), which is the "no authenticated
+	// caller" signal audit triggers key on.
+	if a.subject != nil {
+		if sub := a.subject.SubjectFromContext(ctx); sub != "" {
+			fmt.Fprintf(sqlb, `SELECT set_config(%s, %s, true); `,
+				sqlQuoteLiteral(a.cfg.SubjectGUC), sqlQuoteLiteral(sub))
+		}
 	}
 
 	fmt.Fprintf(sqlb, `SET LOCAL ROLE %s; `, pgx.Identifier{roleName}.Sanitize())
@@ -281,6 +320,47 @@ type TenantIDResolverFunc func(ctx context.Context) string
 
 // TenantIDFromContext implements [TenantIDResolver].
 func (f TenantIDResolverFunc) TenantIDFromContext(ctx context.Context) string {
+	return f(ctx)
+}
+
+// SubjectResolver returns the authenticated caller's opaque identity
+// associated with a request ctx — conventionally the JWT `sub` claim
+// (RFC 7519), hence the name — or "" when the request has no
+// authenticated caller (anonymous request, system-initiated work such
+// as scheduled workflows).
+//
+// OPTIONAL, unlike [TenantIDResolver]: wiring one opts the BeginHook
+// into stamping [Config.SubjectGUC] on transaction begin, so database
+// audit triggers can attribute row mutations to the caller via
+// `current_setting(SubjectGUC, true)`. Two deliberate asymmetries with
+// the tenant id:
+//
+//   - an empty subject emits NO set_config at all (the unset GUC reads
+//     as SQL NULL — absence IS the "no authenticated caller" signal),
+//     where the tenant id emits a deterministic empty-string sentinel;
+//   - the subject is stamped on EVERY role posture, sysuser included —
+//     it is informational attribution, never an authorization input,
+//     and a BYPASSRLS transaction initiated by an authenticated caller
+//     (admin RPCs, workflow activities carrying propagated claims)
+//     still deserves attribution.
+//
+// stdcrpcenttenancyfx is identity-agnostic: production typically binds
+// this to a JWT claim at the composition root (e.g. stdcrpcauthfx's
+// ProvideSubjectResolver).
+//
+// Implementations must be pure ctx readers — no I/O, no allocation
+// hot paths — because the resolver is invoked on every ent
+// transaction.
+type SubjectResolver interface {
+	SubjectFromContext(ctx context.Context) string
+}
+
+// SubjectResolverFunc adapts a plain function into a [SubjectResolver]
+// — the same convenience [TenantIDResolverFunc] gives its interface.
+type SubjectResolverFunc func(ctx context.Context) string
+
+// SubjectFromContext implements [SubjectResolver].
+func (f SubjectResolverFunc) SubjectFromContext(ctx context.Context) string {
 	return f(ctx)
 }
 
@@ -342,6 +422,13 @@ type Params struct {
 	// root and prevents a future code change from silently turning
 	// the webuser path into a no-op.
 	TenantID TenantIDResolver
+	// Subject optionally resolves the authenticated caller's identity
+	// (conventionally the JWT `sub` claim) stamped into
+	// [Config.SubjectGUC] for audit attribution. Optional, unlike
+	// TenantID: a binary whose database has no attribution-reading
+	// triggers simply doesn't wire one, and the BeginHook emits no
+	// subject set_config at all.
+	Subject SubjectResolver `optional:"true"`
 }
 
 // Result is the fx output for [New]. The BeginHook is exported as
@@ -364,7 +451,7 @@ type Result struct {
 // annotation fails app start instead of surfacing the first time the
 // offending RPC is called.
 func New(params Params) (Result, error) {
-	auth := &Authorize{cfg: params.Config, tenantID: params.TenantID}
+	auth := &Authorize{cfg: params.Config, tenantID: params.TenantID, subject: params.Subject}
 
 	res := Result{
 		Authorize: auth,
