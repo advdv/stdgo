@@ -1,43 +1,38 @@
 // Package stdenttypeid is the Go-side companion to a Postgres `typeid`
-// composite type. It carries a typeid value as its canonical
-// *printable* form (e.g. `upld_01j8...`) on the Go side while
-// letting ent / pgx round-trip it transparently against a
-// `public.typeid` column.
+// type. It carries a typeid value as its canonical *printable* form
+// (e.g. `upld_01j8...`) on the Go side while letting ent / pgx
+// round-trip it transparently against a `public.typeid` column.
 //
-// Why this exists: the Postgres `typeid` is a composite type of
-// the shape `(prefix text, uuid uuid)`. pgx encodes a Go string
-// parameter as an anonymous record, which Postgres rejects with
-// `input of anonymous composite types is not implemented
-// (SQLSTATE 0A000)` for every `WHERE id = $1` / `DELETE WHERE
-// id = $1` query. Reads surface as the raw composite literal
-// `(upld,019e...)` rather than the printable typeid form a wire
-// API wants.
+// The Postgres `typeid` is a scalar `text` domain that stores the
+// printable form directly, so the Go-side string and the column value
+// are the same bytes — no conversion is needed in either direction.
+// (Historically `typeid` was a composite `(prefix text, uuid uuid)`;
+// this package still normalises that legacy composite-literal shape on
+// [ID.Scan] for robustness, but new schemas use the text domain.)
 //
-// [ID] solves both halves at the ent column-type layer:
+// [ID] adapts the value at the ent column-type layer:
 //
-//   - [ID.Scan] normalises whatever Postgres returns (either the
-//     composite literal `(prefix,uuid)` or an already-printable
-//     `prefix_base32suffix`) into the printable form. The Go-side
-//     value of a typeid column is therefore always the same shape a
-//     wire API consumes.
+//   - [ID.Scan] returns the already-printable text verbatim, and (for
+//     legacy/robustness) also normalises a composite literal
+//     `(prefix,uuid)` into the printable form. The Go-side value of a
+//     typeid column is therefore always the same shape a wire API
+//     consumes.
 //
-//   - [ID.FormatParam] makes ent's SQL builder render the parameter
-//     placeholder as `public.typeid_parse($N)` so Postgres receives
-//     a real `typeid` expression, not an anonymous composite. Every
-//     ent predicate that takes a typeid value (IDEQ, IDGT, IDIn,
-//     DeleteOneID, …) inherits the wrap for free.
+//   - [ID.FormatParam] returns the placeholder verbatim. Because the
+//     column is a scalar text domain, a bare `id = $N` is a LEAKPROOF
+//     `text` comparison that pushes as an index scan-key under FORCE
+//     ROW LEVEL SECURITY — wrapping it in a function call would defeat
+//     that.
 //
-//   - [ID.Value] passes the printable string through to
-//     `typeid_parse()` unchanged.
+//   - [ID.Value] passes the printable string through unchanged.
 //
 // The base32 alphabet mirrors the Crockford-style alphabet
 // (`0123456789abcdefghjkmnpqrstvwxyz`) that the companion SQL
 // `typeid_print()` / `base32_encode()` functions use EXACTLY so
 // the Go-side normalisation produces the same string `typeid_print()`
-// does for the same composite — round-trip tests against a known
-// vector pin this end-to-end.
+// does — round-trip tests against a known vector pin this end-to-end.
 //
-// The matching Postgres-side schema (the `typeid` composite, the
+// The matching Postgres-side schema (the `typeid` domain, the
 // `typeid_parse()` / `typeid_print()` / `typeid_generate()`
 // functions, and the Crockford `base32_encode()` helper) is the
 // caller's responsibility; this package is the Go-side adapter
@@ -82,23 +77,24 @@ type ID string //nolint:recvcheck // sql.Scanner needs pointer; ent calls Value/
 func (id ID) String() string { return string(id) }
 
 // Value implements [database/sql/driver.Valuer]. The driver sees
-// the printable string; [ID.FormatParam] ensures Postgres receives
-// it via `public.typeid_parse($N)`.
+// the printable string, which is exactly what a scalar `typeid` text
+// domain column stores.
 func (id ID) Value() (driver.Value, error) {
 	return string(id), nil
 }
 
 // FormatParam implements ent's [entsql.ParamFormatter] interface,
 // which ent's SQL builder calls for every parameter that is bound
-// from this Go type. Wrapping the placeholder with
-// `public.typeid_parse(...)` makes Postgres convert the bound text
-// into a real `typeid` composite before evaluating the predicate.
-// The `public` schema is named explicitly so the rewrite is not
-// search_path-dependent (per-tenant roles often have search_path
-// pinned away from public; the function is expected to live in
-// public).
+// from this Go type. The Postgres `typeid` type is a scalar `text`
+// domain, so the bound printable string needs no conversion and the
+// placeholder is returned verbatim. This is deliberate: `text`
+// `=`/`<`/`>` are LEAKPROOF, so a bare `id = $N` predicate pushes as
+// an index scan-key under FORCE ROW LEVEL SECURITY. Wrapping the
+// placeholder in a function call (as the historical composite-typeid
+// form did with `public.typeid_parse(...)`) would defeat that
+// pushdown.
 func (id ID) FormatParam(placeholder string, _ *entsql.StmtInfo) string {
-	return "public.typeid_parse(" + placeholder + ")"
+	return placeholder
 }
 
 // Scan implements [database/sql.Scanner]. Accepts both the raw

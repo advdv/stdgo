@@ -36,8 +36,10 @@ func TestID_FormatParam(t *testing.T) {
 
 	id := stdenttypeid.ID(knownSuffix)
 
-	assert.Equal(t, "public.typeid_parse($1)", id.FormatParam("$1", nil))
-	assert.Equal(t, "public.typeid_parse($42)", id.FormatParam("$42", nil))
+	// The scalar text-domain typeid needs no conversion: the placeholder
+	// is returned verbatim so `id = $N` stays a leakproof text comparison.
+	assert.Equal(t, "$1", id.FormatParam("$1", nil))
+	assert.Equal(t, "$42", id.FormatParam("$42", nil))
 }
 
 func TestID_Scan_PrintableString(t *testing.T) {
