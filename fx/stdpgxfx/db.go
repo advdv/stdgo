@@ -201,34 +201,13 @@ func buildIamAuthToken(
 	return tok, nil
 }
 
-// newDB is the low-level constructor for turning our config into sql databases. It is
-// called for both the main pool and the derived pools. The pool name is used to
-// apply name-based conventions (e.g., the "ro" pool auto-rewrites Aurora cluster
-// writer endpoints to the corresponding reader endpoint) and to look up explicit
-// per-pool host overrides from cfg.Hosts.
+// newDB constructs a database from its resolved configuration and owns its lifecycle.
 func newDB[DBT any](
-	name string,
-	deriver Deriver, // optional
 	lcl fx.Lifecycle,
-	cfg Config,
-	pcfg *pgxpool.Config,
-	logs *zap.Logger,
+	pcfg FinalPgxPoolConfig,
 	drv Driver[DBT],
 ) (DBT, error) {
-	// Always work on a copy of the base config — multiple pools share the same
-	// *pgxpool.Config pointer via fx, and we mutate Host below for conventions
-	// and overrides.
-	pcfg = pcfg.Copy()
-	if deriver != nil {
-		pcfg = deriver(logs, pcfg)
-	}
-
-	// Explicit per-pool host overrides win over name-based conventions.
-	if !ApplyPoolHostOverride(name, pcfg, cfg.Hosts, logs) {
-		ApplyPoolHostConventions(name, pcfg, logs)
-	}
-
-	db, err := drv.NewPool(pcfg)
+	db, err := drv.NewPool(pcfg.Copy())
 	if err != nil {
 		return db, err
 	}
@@ -289,15 +268,11 @@ func Provide[DBT any](drv Driver[DBT], mainPoolName string, derivedPoolNames ...
 	return stdfx.ZapEnvCfgModule[Config]("stdpgx", New,
 		// for some dynamically created provides are dependant on this.
 		fx.Provide(func() Driver[DBT] { return drv }),
+		provideFinalPoolConfig(mainPoolName),
 		// provide the "main" pool
 		fx.Provide(fx.Annotate(
-			func(
-				deriver Deriver, lc fx.Lifecycle, cfg Config,
-				pcfg *pgxpool.Config, logs *zap.Logger, drv Driver[DBT],
-			) (DBT, error) {
-				return newDB(mainPoolName, deriver, lc, cfg, pcfg, logs, drv)
-			},
-			fx.ParamTags(`name:"`+mainPoolName+`" optional:"true"`),
+			newDB[DBT],
+			fx.ParamTags("", `name:"`+mainPoolName+`"`),
 			fx.ResultTags(`name:"`+mainPoolName+`"`))),
 		// provide the "derived" pools (if any)
 		withDerivedPools(drv, mainPoolName, derivedPoolNames...),
@@ -320,12 +295,12 @@ func ProvideDeriver(name string, deriver Deriver) fx.Option {
 func withDerivedPools[DBT any](drv Driver[DBT], mainName string, names ...string) fx.Option {
 	options := make([]fx.Option, 0, len(names))
 	for _, name := range names {
-		options = append(options, fx.Provide(
+		options = append(options, provideFinalPoolConfig(name), fx.Provide(
 			fx.Annotate(func(
-				_ DBT, deriver Deriver, pcfg *pgxpool.Config, lc fx.Lifecycle, cfg Config, logs *zap.Logger,
+				_ DBT, pcfg FinalPgxPoolConfig, lc fx.Lifecycle, logs *zap.Logger,
 			) (derived DBT, err error) {
 				// create the pool for each named derived.
-				derived, err = newDB(name, deriver, lc, cfg, pcfg, logs, drv)
+				derived, err = newDB(lc, pcfg, drv)
 				if err != nil {
 					return derived, fmt.Errorf("failed to created derived pool: %w", err)
 				}
@@ -334,7 +309,7 @@ func withDerivedPools[DBT any](drv Driver[DBT], mainName string, names ...string
 
 				return derived, nil
 			},
-				fx.ParamTags(`name:"`+mainName+`"`, `name:"`+name+`" optional:"true"`),
+				fx.ParamTags(`name:"`+mainName+`"`, `name:"`+name+`"`),
 				fx.ResultTags(`name:"`+name+`"`))))
 	}
 
