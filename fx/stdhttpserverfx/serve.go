@@ -38,20 +38,11 @@ func newAddr(cfg Config) (netip.AddrPort, error) {
 	return ap, nil
 }
 
-func newListener(ap netip.AddrPort) (*net.TCPListener, error) {
-	ln, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(ap))
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %w", err)
-	}
-
-	return ln, nil
-}
-
 // New inits the http server.
 func New(
 	lifecycle fx.Lifecycle,
 	hdlr http.Handler,
-	lnr *net.TCPListener,
+	addr netip.AddrPort,
 	cfg Config,
 	logs *zap.Logger,
 	shut fx.Shutdowner,
@@ -66,7 +57,13 @@ func New(
 	}
 
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(ctx context.Context) error {
+			// Not injected: a listener bound at construction leaks when the app fails before (or never) starts.
+			lnr, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr.String())
+			if err != nil {
+				return fmt.Errorf("failed to listen: %w", err)
+			}
+
 			go func() {
 				// Serve only returns ErrServerClosed on a regular shutdown. Anything else means the server
 				// stopped accepting connections, so we shut the app down instead of running without it.
@@ -102,20 +99,17 @@ func New(
 func Provide(name ...string) fx.Option {
 	newAnns := []fx.Annotation{}
 	addrAnns := []fx.Annotation{}
-	lnAnns := []fx.Annotation{}
 	invAnns := []fx.Annotation{}
 
 	if len(name) > 0 {
 		newAnns = []fx.Annotation{fx.ParamTags(``, tag(name[0]), tag(name[0]), tag(name[0])), fx.ResultTags(tag(name[0]))}
 		addrAnns = []fx.Annotation{fx.ParamTags(tag(name[0])), fx.ResultTags(tag(name[0]))}
-		lnAnns = []fx.Annotation{fx.ParamTags(tag(name[0])), fx.ResultTags(tag(name[0]))}
 		invAnns = []fx.Annotation{fx.ParamTags(tag(name[0]))}
 	}
 
 	opts := []fx.Option{
 		fx.Provide(fx.Annotate(New, newAnns...)),
 		fx.Provide(fx.Annotate(newAddr, addrAnns...)),
-		fx.Provide(fx.Annotate(newListener, lnAnns...), fx.Private),
 		fx.Invoke(fx.Annotate(func(*http.Server) {}, invAnns...)),
 	}
 

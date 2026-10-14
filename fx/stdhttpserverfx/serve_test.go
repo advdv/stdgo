@@ -1,6 +1,8 @@
 package stdhttpserverfx_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
-	"go.uber.org/zap/zaptest"
 )
 
 var serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
@@ -96,31 +97,67 @@ func TestTwoNamedServes(t *testing.T) {
 }
 
 func TestServeFailureShutsDown(t *testing.T) {
-	lnr, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	require.NoError(t, lnr.Close()) // makes Serve fail on its first Accept
+	t.Setenv("STDHTTPSERVER_BIND_ADDR_PORT", freeAddr(t))
 
-	lc, shut := fxtest.NewLifecycle(t), &shutdowner{called: make(chan fx.ShutdownOption, 1)}
-	_, err = stdhttpserverfx.New(lc, serve, lnr, stdhttpserverfx.Config{}, zaptest.NewLogger(t), shut)
-	require.NoError(t, err)
+	var srv *http.Server
 
-	lc.RequireStart()
-	t.Cleanup(lc.RequireStop)
+	ctx, app := t.Context(), fx.New(
+		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
+		fx.Populate(&srv),
+		stdenvcfg.ProvideOSEnvironment(),
+
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
+		stdhttpserverfx.Provide(),
+	)
+
+	// Serve hands its listener to BaseContext right before accepting, closing it makes Serve fail.
+	srv.BaseContext = func(l net.Listener) context.Context {
+		l.Close()
+
+		return ctx
+	}
+
+	require.NoError(t, app.Start(ctx))
 
 	select {
-	case opt := <-shut.called:
-		require.Equal(t, fx.ExitCode(1), opt)
+	case sig := <-app.Wait():
+		require.Equal(t, 1, sig.ExitCode)
 	case <-time.After(5 * time.Second):
 		t.Fatal("expected a shutdown request after Serve failed")
 	}
+
+	require.NoError(t, app.Stop(ctx))
 }
 
-type shutdowner struct{ called chan fx.ShutdownOption }
+func TestPortNotBoundWhenAppFailsToInitialize(t *testing.T) {
+	addr := freeAddr(t)
+	t.Setenv("STDHTTPSERVER_BIND_ADDR_PORT", addr)
 
-func (s *shutdowner) Shutdown(opts ...fx.ShutdownOption) error {
-	s.called <- opts[0]
+	app := fx.New(
+		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
+		stdenvcfg.ProvideOSEnvironment(),
 
-	return nil
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
+		stdhttpserverfx.Provide(),
+		fx.Invoke(func(*http.Server) error { return errors.New("init failed") }),
+	)
+	require.ErrorContains(t, app.Err(), "init failed")
+
+	lnr, err := net.Listen("tcp", addr)
+	require.NoError(t, err)
+	require.NoError(t, lnr.Close())
+}
+
+func freeAddr(tb testing.TB) string {
+	tb.Helper()
+
+	lnr, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(tb, err)
+	require.NoError(tb, lnr.Close())
+
+	return lnr.Addr().String()
 }
 
 func assertStatus(tb testing.TB, addr netip.AddrPort) {
