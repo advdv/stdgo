@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/advdv/stdgo/stdent"
 	"github.com/advdv/stdgo/stdcrpc/stdcrpcwritefence"
+	"github.com/advdv/stdgo/stdent"
 	"github.com/gorilla/securecookie"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

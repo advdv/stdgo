@@ -19,7 +19,6 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 	"go.uber.org/zap/zaptest/observer"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestSetup(t *testing.T) {
@@ -48,7 +47,7 @@ func TestWorkflowExecution(t *testing.T) {
 	var obs *observer.ObservedLogs
 
 	ctx, _, tst := setup(t, &obs)
-	out, err := tst.W.Foo(ctx, internalv1.FooInput_builder{Bar: proto.String("abc")}.Build())
+	out, err := tst.W.Foo(ctx, internalv1.FooInput_builder{Bar: new("abc")}.Build())
 	require.NoError(t, err)
 	require.NotNil(t, out)
 

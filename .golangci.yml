@@ -9,6 +9,7 @@ linters:
     - dupword # gets in the way often when we're commenting out stuff
     - err113 # too much effort
     - exhaustruct # CDK has large structs we use partially
+    - exhaustruct_v5 # same as exhaustruct, renamed in newer golangci-lint
     - funlen # trust our own judgement
     - gochecknoglobals # too strict
     - gochecknoinits # frameworks and magefile use init responsibly

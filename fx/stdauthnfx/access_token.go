@@ -8,7 +8,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 )
 
 // authenticateAccessToken verifies the access token the client got from Auth0.
@@ -40,6 +39,6 @@ func (ac *AccessControl) authenticateAccessToken(
 	stdctx.Log(ctx).Info("authenticated", zap.String("subject", sub))
 
 	return WithWebUserAccess(ctx, ac.validator, stdauthnfxv1.AccessIdentity_builder{
-		Subject: proto.String(sub),
+		Subject: new(sub),
 	}.Build()), nil
 }

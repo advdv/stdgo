@@ -23,6 +23,7 @@ func (tx *mockTx1) ExecContext(ctx context.Context, query string, args ...any) (
 func (*mockTx1) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, nil
 }
+
 func (*mockTx1) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row { return nil }
 
 func TestExecf(t *testing.T) {

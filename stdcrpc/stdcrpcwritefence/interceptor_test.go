@@ -84,7 +84,7 @@ func cookieFromResponse(resp *connect.Response[emptypb.Empty]) *http.Cookie {
 		return nil
 	}
 
-	header := http.Header(resp.Header())
+	header := resp.Header()
 	// http.Response.Cookies() needs an *http.Response; emulate by
 	// constructing one with just the headers — Cookies only reads
 	// Set-Cookie.

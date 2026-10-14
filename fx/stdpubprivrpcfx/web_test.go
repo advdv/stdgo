@@ -15,7 +15,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest/observer"
-	"google.golang.org/protobuf/proto"
 )
 
 const testRPCBasePath = "/xr"
@@ -109,14 +108,14 @@ func TestRPCCalling(t *testing.T) {
 	t.Run("response validation", func(t *testing.T) {
 		t.Parallel()
 		ctx, _, _, ro, _, _ := setupAll(t)
-		_, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: proto.String("")}.Build()))
+		_, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: new("")}.Build()))
 		require.ErrorContains(t, err, "response: validation error")
 	})
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 		ctx, _, _, ro, _, _ := setupAll(t)
-		resp, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: proto.String("abc")}.Build()))
+		resp, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: new("abc")}.Build()))
 		require.NoError(t, err)
 		require.NotNil(t, resp.Msg)
 	})
@@ -125,9 +124,8 @@ func TestRPCCalling(t *testing.T) {
 		t.Parallel()
 		var obs *observer.ObservedLogs
 		ctx, _, _, ro, _, _ := setupAll(t, &obs)
-		_, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: proto.String("panic")}.Build()))
-		var cerr *connect.Error
-		if !errors.As(err, &cerr) {
+		_, err := ro.WhoAmI(ctx, connect.NewRequest(foov1.WhoAmIRequest_builder{Echo: new("panic")}.Build()))
+		if _, ok := errors.AsType[*connect.Error](err); !ok {
 			t.Fatalf("not a connect error")
 		}
 

@@ -6,7 +6,6 @@ import (
 
 	"buf.build/go/protovalidate"
 	stdauthnfxv1 "github.com/advdv/stdgo/fx/stdauthnfx/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 type ctxKey string
@@ -23,7 +22,7 @@ func WithAccess(ctx context.Context, val protovalidate.Validator, access *stdaut
 // WithAnonymousAccess stores anonymous access in the context.
 func WithAnonymousAccess(ctx context.Context, val protovalidate.Validator) context.Context {
 	return WithAccess(ctx, val, stdauthnfxv1.Access_builder{
-		IsAnonymous: proto.Bool(true),
+		IsAnonymous: new(true),
 	}.Build())
 }
 

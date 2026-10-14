@@ -43,8 +43,7 @@ func txResponse[O any](ctx context.Context, msg *O, err error) (*connect.Respons
 }
 
 func txError(ctx context.Context, err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		mappedFn, ok := PgErrorsToConnectError[pgErr.Code]
 		if ok {
 			return mappedFn(pgErr, stdctx.Log(ctx))

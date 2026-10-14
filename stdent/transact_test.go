@@ -30,6 +30,7 @@ type mockTx1 struct {
 }
 
 func (tx *mockTx1) Commit() error { atomic.AddInt64(&tx.client.numCommits, 1); return tx.tx.Commit() }
+
 func (tx *mockTx1) Rollback() error {
 	atomic.AddInt64(&tx.client.numRollbacks, 1)
 	return tx.tx.Rollback()

@@ -42,11 +42,9 @@ func MessageSnapshotEq(tb testing.TB, msg proto.Message, actOverwrites ...Overwr
 func ResponseSnapshotEq[O any](
 	tb testing.TB, resp *connect.Response[O], err error, actOverwrites ...Overwrite,
 ) {
-	var connErr *connect.Error
-
 	var actMsg []byte
 
-	if errors.As(err, &connErr) {
+	if _, ok := errors.AsType[*connect.Error](err); ok {
 		rec := httptest.NewRecorder()
 		require.NoError(tb, connect.NewErrorWriter().Write(rec, &http.Request{}, err))
 

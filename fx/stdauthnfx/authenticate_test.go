@@ -7,7 +7,6 @@ import (
 	"github.com/advdv/stdgo/fx/stdauthnfx"
 	stdauthnfxv1 "github.com/advdv/stdgo/fx/stdauthnfx/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestAuthenticateAccessToken(t *testing.T) {
@@ -33,7 +32,7 @@ func TestAuthenticateAPIKey(t *testing.T) {
 	ctx, ac, _ := setup(t, nil)
 
 	key1, err := ac.BuildAndSignAPIKey(stdauthnfxv1.Access_builder{
-		IsSystem: proto.Bool(true),
+		IsSystem: new(true),
 	}.Build())
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(key1, stdauthnfx.APIKeyPrefix))
