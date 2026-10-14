@@ -25,7 +25,7 @@ func Init(dotEnvDevEnv string, _ ...[]string) {
 
 // Lint our codebase.
 func Lint() error {
-	err := sh.Run("golangci-lint", "run")
+	err := sh.RunV("golangci-lint", "run")
 	if err != nil {
 		return fmt.Errorf("failed to run golang-ci: %w", err)
 	}

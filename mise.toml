@@ -1,11 +1,15 @@
+
+[settings]
+go.set_gobin = false
+minimum_release_age_excludes = ["amp"]
+
 [tools]
+amp = { version = "latest", allow_builds = ["@ampcode/cli"] }
 # golangci-lint must be listed before go so it takes precedence on PATH
 # over any binary installed via `go install`
 golangci-lint = "latest"
-"npm:@ampcode/cli" = { version = "latest", npm_args = "--ignore-scripts=false" }
 go = "latest"
-amp = "latest"
 mage = "latest"
-node = "22"
+node = "lts"
 buf = "latest"
 claude = "latest"
