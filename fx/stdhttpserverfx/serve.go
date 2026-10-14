@@ -3,6 +3,7 @@ package stdhttpserverfx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -48,24 +49,35 @@ func newListener(ap netip.AddrPort) (*net.TCPListener, error) {
 
 // New inits the http server.
 func New(
-	lc fx.Lifecycle,
+	lifecycle fx.Lifecycle,
 	hdlr http.Handler,
 	lnr *net.TCPListener,
 	cfg Config,
 	logs *zap.Logger,
+	shut fx.Shutdowner,
 ) (*http.Server, error) {
 	srv := &http.Server{
 		ReadTimeout:       cfg.ReadTimeout,
-		ReadHeaderTimeout: cfg.ReadTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 		Handler:           hdlr,
 		ErrorLog:          zap.NewStdLog(logs),
 	}
 
-	lc.Append(fx.Hook{
+	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			go srv.Serve(lnr) //nolint:errcheck
+			go func() {
+				// Serve only returns ErrServerClosed on a regular shutdown. Anything else means the server
+				// stopped accepting connections, so we shut the app down instead of running without it.
+				if err := srv.Serve(lnr); !errors.Is(err, http.ErrServerClosed) {
+					logs.Error("http server stopped serving", zap.Error(err))
+
+					if err := shut.Shutdown(fx.ExitCode(1)); err != nil {
+						logs.Error("failed to request shutdown", zap.Error(err))
+					}
+				}
+			}()
 
 			logs.Info("http server started", zap.Stringer("addr", lnr.Addr()))
 

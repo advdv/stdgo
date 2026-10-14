@@ -2,9 +2,11 @@ package stdhttpserverfx_test
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/advdv/stdgo/fx/stdhttpserverfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
@@ -12,23 +14,32 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+	"go.uber.org/zap/zaptest"
 )
 
 var serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 func TestServeNoName(t *testing.T) {
-	var addr netip.AddrPort
+	t.Setenv("STDHTTPSERVER_READ_TIMEOUT", "60s")
+	t.Setenv("STDHTTPSERVER_READ_HEADER_TIMEOUT", "2s")
+
+	var (
+		addr netip.AddrPort
+		srv  *http.Server
+	)
 
 	ctx, app := t.Context(), fx.New(
-
 		fx.Supply(fx.Annotate(serve, fx.As(new(http.Handler)))),
-		fx.Populate(&addr),
+		fx.Populate(&addr, &srv),
 		stdenvcfg.ProvideOSEnvironment(),
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
 		stdhttpserverfx.Provide(),
 	)
+
+	require.Equal(t, 60*time.Second, srv.ReadTimeout)
+	require.Equal(t, 2*time.Second, srv.ReadHeaderTimeout)
 
 	require.NoError(t, app.Start(ctx))
 	assertStatus(t, addr)
@@ -82,6 +93,34 @@ func TestTwoNamedServes(t *testing.T) {
 	assertStatus(t, deps.AddrA)
 	assertStatus(t, deps.AddrB)
 	t.Cleanup(app.RequireStop)
+}
+
+func TestServeFailureShutsDown(t *testing.T) {
+	lnr, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	require.NoError(t, lnr.Close()) // makes Serve fail on its first Accept
+
+	lc, shut := fxtest.NewLifecycle(t), &shutdowner{called: make(chan fx.ShutdownOption, 1)}
+	_, err = stdhttpserverfx.New(lc, serve, lnr, stdhttpserverfx.Config{}, zaptest.NewLogger(t), shut)
+	require.NoError(t, err)
+
+	lc.RequireStart()
+	t.Cleanup(lc.RequireStop)
+
+	select {
+	case opt := <-shut.called:
+		require.Equal(t, fx.ExitCode(1), opt)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected a shutdown request after Serve failed")
+	}
+}
+
+type shutdowner struct{ called chan fx.ShutdownOption }
+
+func (s *shutdowner) Shutdown(opts ...fx.ShutdownOption) error {
+	s.called <- opts[0]
+
+	return nil
 }
 
 func assertStatus(tb testing.TB, addr netip.AddrPort) {
