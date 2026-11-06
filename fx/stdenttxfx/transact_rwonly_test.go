@@ -8,7 +8,9 @@ import (
 	"github.com/advdv/stdgo/fx/stdenttxfx"
 	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
+	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdent"
 	"github.com/advdv/stdgo/stdenvcfg"
@@ -58,12 +60,10 @@ func TestRWOnlyDoesNotProvideRO(t *testing.T) {
 
 	app := fx.New(
 		fx.NopLogger,
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
-		}),
+		stdenvcfg.ProvideExplicitEnvironment(nil),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(t),
-		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
+		stdpgxtestfx.Provide(t, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
 		stdenttxfx.TestProvideRWOnly("testapp-rwonly", "postgres", "postgres",
 			func(driver dialect.Driver) *model.Client { return model.NewClient(model.Driver(driver)) }),
 		fx.Provide(testHook),
@@ -83,13 +83,11 @@ func setupRWOnly(tb testing.TB, other ...any) (context.Context, *stdent.Transact
 	}
 
 	app := fxtest.New(tb,
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
-		}),
+		stdenvcfg.ProvideExplicitEnvironment(nil),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		// note: only the "rw" pool is declared — no "ro" derived pool.
-		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
+		stdpgxtestfx.Provide(tb, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
 		stdenttxfx.TestProvideRWOnly("testapp-rwonly", "postgres", "postgres",
 			func(driver dialect.Driver) *model.Client { return model.NewClient(model.Driver(driver)) }),
 		fx.Provide(testHook),

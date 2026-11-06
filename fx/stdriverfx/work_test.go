@@ -8,12 +8,14 @@ import (
 
 	"buf.build/go/protovalidate"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
+	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
 	"github.com/advdv/stdgo/fx/stdriverfx"
 	testsnapshot "github.com/advdv/stdgo/fx/stdriverfx/internal/testsnapshot"
 	"github.com/advdv/stdgo/fx/stdriverfx/internal/workheartbeat"
 	workheartbeatv1 "github.com/advdv/stdgo/fx/stdriverfx/internal/workheartbeat/v1"
 	"github.com/advdv/stdgo/fx/stdriverfx/stdrivertest"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/advdv/stdgo/stdtx"
@@ -68,12 +70,11 @@ func setup(tb testing.TB, populateMore ...any) (context.Context, *stdriverfx.Wor
 		fx.Populate(&deps),
 		fx.Supply(stdenvcfg.Environment{
 			"STDRIVER_SOFT_STOP_TIMEOUT": "100ms",
-			"STDPGX_MAIN_DATABASE_URL":   "postgresql://postgres:postgres@localhost:5440/postgres",
 		}),
 
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdpgxfx.TestProvide(tb, testsnapshot.Migrator, stdpgxfx.NewPgxV5Driver(), "rw", "rui"),
+		stdpgxtestfx.Provide(tb, stdtestpg.Image, testsnapshot.Migrator, stdpgxfx.NewPgxV5Driver(), "rw", "rui"),
 		stdpgxfx.ProvideDeriver("rui", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			base.ConnConfig.RuntimeParams["search_path"] = "workers" // so the ui can find the search path
 			return base

@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
+	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
 	"github.com/advdv/stdgo/fx/stdriverfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -94,9 +96,9 @@ func TestListenerPoolIntegration(t *testing.T) {
 	}
 	app := fxtest.New(t,
 		fx.Populate(&deps),
-		fx.Supply(stdenvcfg.Environment{"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres"}),
+		fx.Supply(stdenvcfg.Environment{}),
 		stdzapfx.Fx(), stdzapfx.TestProvide(t),
-		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
+		stdpgxtestfx.Provide(t, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw"),
 		stdpgxfx.ProvideDeriver("rw", func(_ *zap.Logger, cfg *pgxpool.Config) *pgxpool.Config {
 			cfg.ConnConfig.Tracer = trace
 			return cfg

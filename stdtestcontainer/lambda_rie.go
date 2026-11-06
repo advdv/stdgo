@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/carlmjohnson/requests"
-	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -91,7 +90,7 @@ func SetupLambdaRIEContainer(
 			Entrypoint: append([]string{"/aws-lambda-rie"}, entrypoint...),
 			WaitingFor: wait.ForAll(
 				wait.ForLog("[INFO] (rapid) exec"),
-				wait.ForListeningPort(nat.Port("8080/tcp")).SkipInternalCheck(),
+				wait.ForListeningPort("8080/tcp").SkipInternalCheck(),
 			),
 			LogConsumerCfg: &testcontainers.LogConsumerConfig{
 				Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},

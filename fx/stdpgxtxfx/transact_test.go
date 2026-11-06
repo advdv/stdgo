@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
+	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
 	"github.com/advdv/stdgo/fx/stdpgxtxfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
 	"github.com/advdv/stdgo/stdtx"
@@ -51,12 +53,10 @@ func setup(tb testing.TB, other ...any) (context.Context, *stdtx.Transactor[pgx.
 	}
 
 	app := fxtest.New(tb,
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
-		}),
+		stdenvcfg.ProvideExplicitEnvironment(nil),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
+		stdpgxtestfx.Provide(tb, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
 		stdpgxtxfx.TestProvide("testapp", "postgres", "postgres"),
 		fx.Provide(testHook),
 		fx.Populate(&deps),

@@ -9,7 +9,9 @@ import (
 	"github.com/advdv/stdgo/fx/stdenttxfx"
 	"github.com/advdv/stdgo/fx/stdenttxfx/testdata/model"
 	"github.com/advdv/stdgo/fx/stdpgxfx"
+	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
+	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdent"
 	"github.com/advdv/stdgo/stdenvcfg"
@@ -54,12 +56,10 @@ func setup(tb testing.TB, other ...any) (context.Context, *stdent.Transactor[*mo
 	}
 
 	app := fxtest.New(tb,
-		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
-			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres",
-		}),
+		stdenvcfg.ProvideExplicitEnvironment(nil),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
-		stdpgxfx.TestProvide(tb, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw", "ro"),
+		stdpgxtestfx.Provide(tb, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewStandardDriver(), "rw", "ro"),
 		stdenttxfx.TestProvide("testapp", "postgres", "postgres",
 			func(driver dialect.Driver) *model.Client { return model.NewClient(model.Driver(driver)) }),
 		fx.Provide(testHook),
