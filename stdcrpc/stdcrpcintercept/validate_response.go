@@ -1,4 +1,7 @@
-// Package stdcrpcintercept holds re-usable connect rpc interceptors.
+// Package stdcrpcintercept holds re-usable connect rpc interceptors. They take the connect-go version
+// their signatures name: [NewValidateResponse] connect-go v1 (connectrpc.com/connect), and
+// [NewServerErrors] connect-go v2 (connectrpc.com/connect/v2). For connect-go v2, validate responses
+// with the interceptor of connectrpc.com/validate and its WithValidateResponses option instead.
 package stdcrpcintercept
 
 import (
