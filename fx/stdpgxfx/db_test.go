@@ -3,15 +3,15 @@ package stdpgxfx_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/stdenvcfg"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/peterldowns/pgtestdb/migrators/goosemigrator"
@@ -67,132 +67,75 @@ $$;`)
 	require.Equal(t, 1, obs.FilterMessage("notice: notice message").Len())
 }
 
-func TestIamAuthRegionFromHost(t *testing.T) {
+func TestIamAuthWithoutTokenFuncFails(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name string
-		host string
-		want string
-	}{
-		{
-			name: "regional cluster (writer) endpoint",
-			host: "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com",
-			want: "eu-central-1",
+	_, err := stdpgxfx.New(stdpgxfx.Params{
+		Config: stdpgxfx.Config{
+			MainDatabaseURL: "postgresql://postgres@localhost:5432/postgres",
+			IamAuth:         true,
 		},
-		{
-			name: "regional cluster reader endpoint",
-			host: "mycluster.cluster-ro-abc123.eu-central-1.rds.amazonaws.com",
-			want: "eu-central-1",
-		},
-		{
-			name: "regional instance endpoint",
-			host: "instance-1.abc123.ap-southeast-1.rds.amazonaws.com",
-			want: "ap-southeast-1",
-		},
-		{
-			name: "trailing dot",
-			host: "mycluster.cluster-abc123.us-west-2.rds.amazonaws.com.",
-			want: "us-west-2",
-		},
-		{
-			name: "global writer endpoint does NOT match",
-			host: "mycluster.global-abc123.global.rds.amazonaws.com",
-			want: "",
-		},
-		{
-			name: "non-RDS host",
-			host: "myproxy.example.com",
-			want: "",
-		},
-		{
-			name: "localhost",
-			host: "localhost",
-			want: "",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, stdpgxfx.DeriveSigningRegion(tc.host))
-		})
-	}
+		Logs: zap.NewNop(),
+	})
+	require.ErrorContains(t, err, "no IamTokenFunc is provided")
 }
 
-func TestIamAuthBeforeConnectUsesPerPoolHost(t *testing.T) {
-	// Simulate a Frankfurt-primary, Singapore-secondary deployment:
-	// - rw pool stays on the Frankfurt cluster endpoint (signs eu-central-1)
-	// - ro pool gets re-pointed by its Deriver to the Singapore reader endpoint
-	//   (signs ap-southeast-1)
-	// We build the *pgxpool.Config directly via stdpgxfx.New (rather than the
-	// full fx graph) so we can drive BeforeConnect with arbitrary live conns.
-	const (
-		fraHost = "mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com"
-		sgpHost = "mycluster.cluster-ro-def456.ap-southeast-1.rds.amazonaws.com"
-	)
-
-	awsCfg, err := awsconfig.LoadDefaultConfig(t.Context(),
-		awsconfig.WithRegion("eu-central-1"),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("A", "B", "")))
-	require.NoError(t, err)
+func TestIamAuthBeforeConnectUsesTokenFunc(t *testing.T) {
+	t.Parallel()
 
 	res, err := stdpgxfx.New(stdpgxfx.Params{
 		Config: stdpgxfx.Config{
-			MainDatabaseURL: "postgresql://postgres:postgres@" + fraHost + ":5432/postgres",
+			MainDatabaseURL: "postgresql://postgres@localhost:5432/postgres",
 			IamAuth:         true,
 		},
-		AwsConfig: awsCfg,
-		Logs:      zap.NewNop(),
+		Logs: zap.NewNop(),
+		IamToken: func(_ context.Context, cc *pgx.ConnConfig) (string, error) {
+			return "token-for-" + cc.Host, nil
+		},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, res.PoolConfig.BeforeConnect)
 
-	// Drive BeforeConnect with a Frankfurt-shaped *pgx.ConnConfig and a
-	// Singapore-shaped one. We can't inspect the actual SigV4 region without
-	// decoding the auth token, but we CAN assert that token generation succeeds
-	// (i.e., region resolution succeeds) and the password gets set — and we
-	// inspect the produced token's URL since BuildAuthToken returns it as a
-	// presigned URL containing X-Amz-Credential=<key>/<date>/<region>/...
-	for _, tc := range []struct {
-		host       string
-		wantRegion string
-	}{
-		{fraHost, "eu-central-1"},
-		{sgpHost, "ap-southeast-1"},
-	} {
-		pgc := res.PoolConfig.ConnConfig.Copy()
-		pgc.Host = tc.host
-		err := res.PoolConfig.BeforeConnect(t.Context(), pgc)
-		require.NoErrorf(t, err, "BeforeConnect should succeed for host=%s", tc.host)
-		require.NotEmpty(t, pgc.Password, "token should be set for host=%s", tc.host)
-		// the BuildAuthToken result is a presigned URL; the credential scope
-		// includes the signing region.
-		require.Containsf(t, pgc.Password, "%2F"+tc.wantRegion+"%2F",
-			"token for host=%s should be signed for region=%s but was: %s",
-			tc.host, tc.wantRegion, pgc.Password)
-	}
-}
-
-func TestIamAuthBeforeConnectErrorsOnNonRegionalHost(t *testing.T) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(t.Context(),
-		awsconfig.WithRegion("eu-central-1"),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("A", "B", "")))
-	require.NoError(t, err)
-
-	res, err := stdpgxfx.New(stdpgxfx.Params{
-		Config: stdpgxfx.Config{
-			MainDatabaseURL: "postgresql://postgres:postgres@localhost:5432/postgres",
-			IamAuth:         true,
-		},
-		AwsConfig: awsCfg,
-		Logs:      zap.NewNop(),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, res.PoolConfig.BeforeConnect)
-
+	// the token func must see the live (possibly re-pointed) host.
 	pgc := res.PoolConfig.ConnConfig.Copy()
-	err = res.PoolConfig.BeforeConnect(t.Context(), pgc)
-	require.ErrorContains(t, err, "could not derive IAM signing region from host")
+	pgc.Host = "some-host"
+	require.NoError(t, res.PoolConfig.BeforeConnect(t.Context(), pgc))
+	require.Equal(t, "token-for-some-host", pgc.Password)
+}
+
+func TestIamAuthTokenFuncErrorIsReturned(t *testing.T) {
+	t.Parallel()
+
+	res, err := stdpgxfx.New(stdpgxfx.Params{
+		Config: stdpgxfx.Config{
+			MainDatabaseURL: "postgresql://postgres@localhost:5432/postgres",
+			IamAuth:         true,
+		},
+		Logs: zap.NewNop(),
+		IamToken: func(context.Context, *pgx.ConnConfig) (string, error) {
+			return "", errors.New("boom")
+		},
+	})
+	require.NoError(t, err)
+
+	err = res.PoolConfig.BeforeConnect(t.Context(), res.PoolConfig.ConnConfig.Copy())
+	require.ErrorContains(t, err, "boom")
+}
+
+func TestIamAuthDisabledLeavesBeforeConnectUntouched(t *testing.T) {
+	t.Parallel()
+
+	res, err := stdpgxfx.New(stdpgxfx.Params{
+		Config: stdpgxfx.Config{
+			MainDatabaseURL: "postgresql://postgres@localhost:5432/postgres",
+		},
+		Logs: zap.NewNop(),
+		IamToken: func(context.Context, *pgx.ConnConfig) (string, error) {
+			return "unused", nil
+		},
+	})
+	require.NoError(t, err)
+	require.Nil(t, res.PoolConfig.BeforeConnect)
 }
 
 func TestRoPoolAutoRewritesAuroraClusterHost(t *testing.T) {

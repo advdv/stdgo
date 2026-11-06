@@ -5,12 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/advdv/stdgo/stdfx"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,15 +20,10 @@ import (
 type Config struct {
 	// MainDatabaseURL configures the database connection string for the main connection.
 	MainDatabaseURL string `env:"MAIN_DATABASE_URL,required"`
-	// IamAuth enables RDS IAM authentication. When enabled, the password on every
-	// connection attempt is replaced by a freshly built IAM auth token. The signing
-	// region is derived per-connection from the RDS hostname (e.g.,
-	// "mycluster.cluster-xxx.eu-central-1.rds.amazonaws.com" → "eu-central-1"),
-	// which means a derived "ro" pool that points at a different regional endpoint
-	// (e.g., a reader endpoint in another region) signs tokens against that region
-	// automatically. The hostname must match the standard regional RDS pattern;
-	// non-RDS hostnames (e.g., custom domains, RDS Proxy aliases, the global
-	// writer endpoint) are not supported.
+	// IamAuth enables IAM authentication. When enabled, the password of every new
+	// connection is replaced by the token returned by the provided IamTokenFunc.
+	// The stdpgxiamfx sub-package provides an RDS implementation; see its docs for
+	// how the signing region is derived from the host.
 	IamAuth bool `env:"IAM_AUTH"`
 	// Hosts overrides the host for named pools. Useful for Aurora Global Database
 	// deployments where the secondary region's reader pool should connect to a
@@ -44,19 +36,23 @@ type Config struct {
 	//	STDPGX_HOSTS=ro:ro-host.example.com,rw:rw-host.example.com
 	//
 	// An override wins over name-based conventions (i.e., when a pool's host is
-	// overridden, the cluster-ro auto-rewrite is skipped). The IAM signing region
-	// is then derived from the overridden host, so cross-region setups Just Work.
+	// overridden, the cluster-ro auto-rewrite is skipped).
 	Hosts map[string]string `env:"HOSTS"`
 }
+
+// IamTokenFunc returns the password to use for a new connection when IamAuth is enabled.
+// It receives the live connection config so the token can be built for the
+// connection's actual host, which may differ per (derived) pool.
+type IamTokenFunc func(ctx context.Context, cc *pgx.ConnConfig) (string, error)
 
 type (
 	// Params describe the main parameters for providing components.
 	Params struct {
 		fx.In
 
-		Config    Config
-		AwsConfig aws.Config `optional:"true"`
-		Logs      *zap.Logger
+		Config   Config
+		Logs     *zap.Logger
+		IamToken IamTokenFunc `optional:"true"`
 	}
 
 	// Result describe the main components provided for this module.
@@ -66,32 +62,6 @@ type (
 		PoolConfig *pgxpool.Config
 	}
 )
-
-// rdsRegionalHostRE matches regional Aurora/RDS endpoints and captures the region.
-// Examples that match:
-//
-//	mycluster.cluster-abc123.eu-central-1.rds.amazonaws.com         → eu-central-1
-//	mycluster.cluster-ro-abc123.eu-central-1.rds.amazonaws.com      → eu-central-1
-//	instance-1.abc123.ap-southeast-1.rds.amazonaws.com              → ap-southeast-1
-//
-// Examples that DO NOT match — IAM auth is unsupported for these:
-//
-//	mycluster.global-abc123.global.rds.amazonaws.com                (global writer endpoint, no region)
-//	localhost                                                       (local dev)
-//	myproxy.example.com                                             (custom domain / RDS Proxy alias)
-var rdsRegionalHostRE = regexp.MustCompile(
-	`^[^.]+\.[^.]+\.(?P<region>[a-z]{2}-[a-z]+-\d+)\.rds\.amazonaws\.com\.?$`)
-
-// DeriveSigningRegion attempts to extract the AWS region from the given host
-// using the standard RDS regional hostname format. Returns an empty string if
-// the host doesn't match the regional pattern.
-func DeriveSigningRegion(host string) string {
-	m := rdsRegionalHostRE.FindStringSubmatch(host)
-	if m == nil {
-		return ""
-	}
-	return m[rdsRegionalHostRE.SubexpIndex("region")]
-}
 
 // New is the main constructor. In this package it only provides the pool configuration
 // used through out the package.
@@ -131,23 +101,19 @@ func New(params Params) (r Result, err error) {
 }
 
 // installIamAuthBeforeConnect wires up a pgxpool.Config.BeforeConnect hook that
-// replaces the password with a freshly built RDS IAM auth token on every new
-// connection. The signing region is derived from the live *pgx.ConnConfig host
-// so that derived pools (re-pointed by a Deriver to a different regional
-// endpoint) sign tokens for the right region automatically.
+// replaces the password with a token from the provided IamTokenFunc on every new
+// connection. The token func receives the live *pgx.ConnConfig so that derived
+// pools (re-pointed by a Deriver to a different host) get a token for that host.
 //
 // Any pre-existing BeforeConnect hook (e.g., installed by a Deriver or the
-// caller of pgxpool.ParseConfig) is preserved and invoked first; the IAM token
-// is only assigned to pgc.Password if the prior hook returns no error. This
-// matches the chaining pattern used by aurora-dsql-connectors and avoids
-// silently clobbering a user-supplied hook.
+// caller of pgxpool.ParseConfig) is preserved and invoked first; the token is
+// only assigned to pgc.Password if the prior hook returns no error.
 func installIamAuthBeforeConnect(pcfg *pgxpool.Config, params Params) error {
-	if params.AwsConfig.Credentials == nil {
-		return errors.New("IAM authentication is enabled but no AWS configuration provided")
+	if params.IamToken == nil {
+		return errors.New("STDPGX_IAM_AUTH is set but no IamTokenFunc is provided (add stdpgxiamfx.Provide())")
 	}
 
-	awsCfg := params.AwsConfig
-	logs := params.Logs
+	iamToken := params.IamToken
 	prev := pcfg.BeforeConnect
 
 	pcfg.BeforeConnect = func(ctx context.Context, pgc *pgx.ConnConfig) error {
@@ -157,15 +123,9 @@ func installIamAuthBeforeConnect(pcfg *pgxpool.Config, params Params) error {
 			}
 		}
 
-		region := DeriveSigningRegion(pgc.Host)
-		if region == "" {
-			return fmt.Errorf("could not derive IAM signing region from host %q: "+
-				"hostname must match a regional RDS pattern (*.<region>.rds.amazonaws.com)", pgc.Host)
-		}
-
-		tok, err := buildIamAuthToken(ctx, logs, pgc.Port, pgc.User, region, awsCfg, pgc.Host)
+		tok, err := iamToken(ctx, pgc)
 		if err != nil {
-			return fmt.Errorf("failed to build iam token: %w", err)
+			return fmt.Errorf("failed to get iam token: %w", err)
 		}
 
 		pgc.Password = tok
@@ -174,31 +134,6 @@ func installIamAuthBeforeConnect(pcfg *pgxpool.Config, params Params) error {
 	}
 
 	return nil
-}
-
-// buildIamAuthToken will construct a RDS proxy authentication token. We don't run this during the
-// lifecycle phase so we timeout manually with our own context.
-func buildIamAuthToken(
-	ctx context.Context,
-	logs *zap.Logger,
-	port uint16,
-	username, region string,
-	awsc aws.Config,
-	host string,
-) (string, error) {
-	ep := host + ":" + fmt.Sprintf("%d", port)
-
-	logs.Debug("building IAM auth token",
-		zap.String("username", username),
-		zap.String("region", region),
-		zap.String("ep", ep))
-
-	tok, err := auth.BuildAuthToken(ctx, ep, region, username, awsc.Credentials)
-	if err != nil {
-		return "", fmt.Errorf("underlying: %w", err)
-	}
-
-	return tok, nil
 }
 
 // newDB constructs a database from its resolved configuration and owns its lifecycle.
