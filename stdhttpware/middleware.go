@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
-	"strings"
 
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/felixge/httpsnoop"
@@ -13,13 +12,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// Apply applies the middleware in the correct order.
-func Apply(mux http.Handler, logs *zap.Logger) http.Handler {
-	/* ^ */ mux = loggerMiddleware(logs)(mux)
+// Apply applies the middleware in the correct order. The values of sensitiveHeaders, which carry
+// credentials, are redacted wherever headers are logged; their case does not matter.
+func Apply(mux http.Handler, logs *zap.Logger, sensitiveHeaders []string) http.Handler {
+	redact := newRedactor(sensitiveHeaders)
+	/* ^ */ mux = loggerMiddleware(logs, redact)(mux)
 	/* | */ mux = cacheMiddleware()(mux)
 	/* | */ mux = chimiddleware.RealIP(mux)
 	/* | */ mux = chimiddleware.RequestID(mux)
-	/* | */ mux = recoverMiddleware(logs)(mux) // outer middleware, recover anything.
+	/* | */ mux = recoverMiddleware(logs, redact)(mux) // outer middleware, recover anything.
 	return mux
 }
 
@@ -37,7 +38,7 @@ func cacheMiddleware() func(http.Handler) http.Handler {
 }
 
 // loggerMiddleware adds a zap logger to the reques context for all request handling code to use.
-func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
+func loggerMiddleware(logs *zap.Logger, redact redactor) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reqID := chimiddleware.GetReqID(r.Context())
@@ -49,17 +50,8 @@ func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("request_id", reqID),
 				zap.String("request_uri", r.RequestURI))
 
-			// we check for a private address, so in that case we hide ELB checks.
-			isRemotePrivate := false
-
-			remoteIPPort, parseAddrErr := netip.ParseAddrPort("172.20.1.200:7948")
-			if parseAddrErr == nil && remoteIPPort.Addr().IsPrivate() {
-				isRemotePrivate = true
-			}
-
 			// in general we wanna show all requests, but the Docker and ALB health checks are too noisy.
-			if r.UserAgent() == "ELB-HealthChecker/2.0" && isRemotePrivate ||
-				r.UserAgent() == "Wget" && strings.HasPrefix(r.RemoteAddr, "127.0.0.1") {
+			if isHealthCheck(r) {
 				logs = zap.NewNop()
 			}
 
@@ -70,8 +62,8 @@ func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 			m := httpsnoop.CaptureMetrics(next, w, r.WithContext(ctx)) // call other middleware.
 
 			logs.Info("request",
-				zap.Any("request_header", r.Header),
-				zap.Any("response_header", w.Header()),
+				zap.Any("request_header", redact.header(r.Header)),
+				zap.Any("response_header", redact.header(w.Header())),
 				zap.Int("status", m.Code),
 				zap.Int64("bytes_written", m.Written),
 				zap.Duration("duration", m.Duration))
@@ -79,8 +71,69 @@ func loggerMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// redactor redacts the values of sensitive headers, keyed by their canonical form.
+type redactor map[string]bool
+
+// newRedactor returns the redactor of the headers named.
+func newRedactor(sensitiveHeaders []string) redactor {
+	redact := make(redactor, len(sensitiveHeaders))
+	for _, key := range sensitiveHeaders {
+		redact[http.CanonicalHeaderKey(key)] = true
+	}
+
+	return redact
+}
+
+// header returns a copy of h with the values of the sensitive headers replaced, so it can be logged.
+func (redact redactor) header(h http.Header) http.Header {
+	redacted := h.Clone()
+	for key, values := range redacted {
+		if !redact[http.CanonicalHeaderKey(key)] {
+			continue
+		}
+
+		for i := range values {
+			values[i] = "[REDACTED]"
+		}
+	}
+
+	return redacted
+}
+
+// isHealthCheck reports whether r is a health check whose request log is only noise: one from the ALB
+// on a private address, or from wget, which Docker health checks use, on the loopback address.
+func isHealthCheck(r *http.Request) bool {
+	addr, ok := remoteAddr(r)
+	if !ok {
+		return false
+	}
+
+	switch r.UserAgent() {
+	case "ELB-HealthChecker/2.0":
+		return addr.IsPrivate()
+	case "Wget":
+		return addr.IsLoopback()
+	default:
+		return false
+	}
+}
+
+// remoteAddr parses the remote address of r. It is an address with a port, as net/http sets it, or a
+// bare address, as [chimiddleware.RealIP] sets it.
+func remoteAddr(r *http.Request) (netip.Addr, bool) {
+	if addrPort, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+		return addrPort.Addr().Unmap(), true
+	}
+
+	if addr, err := netip.ParseAddr(r.RemoteAddr); err == nil {
+		return addr.Unmap(), true
+	}
+
+	return netip.Addr{}, false
+}
+
 // recoverMiddleware initializes middleware to recover from panics and log them.
-func recoverMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
+func recoverMiddleware(logs *zap.Logger, redact redactor) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
@@ -106,7 +159,7 @@ func recoverMiddleware(logs *zap.Logger) func(http.Handler) http.Handler {
 					// middleware is the outer middleware so the logger is not in the context yet.
 					logs.Error("panic while serving request",
 						zap.Stack("stack"),
-						zap.Error(err), zap.Any("request_header", r.Header))
+						zap.Error(err), zap.Any("request_header", redact.header(r.Header)))
 				}
 			}()
 

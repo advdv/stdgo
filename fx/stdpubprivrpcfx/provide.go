@@ -34,6 +34,8 @@ type Config struct {
 	ConnectCORSAllowedOrigins []string `env:"CONNECT_CORS_ALLOWED_ORIGINS"`
 	// allow configuration for the OpenAPI endpoint.
 	OpenAPICORSAllowedOrigins []string `env:"OPENAPI_CORS_ALLOWED_ORIGINS"`
+	// headers that carry credentials, whose values are redacted wherever headers are logged.
+	SensitiveHeaders []string `env:"SENSITIVE_HEADERS" envDefault:"Authorization,Proxy-Authorization,Cookie,Set-Cookie"`
 	// for making the hosted openapi spec fully descriptive, the environment must specify how to reach it externally.
 	OpenAPIExternalBaseURL *url.URL `env:"OPENAPI_EXTERNAL_BASE_URL"`
 
@@ -237,7 +239,7 @@ func withNonRPCHandling[PRIVRWC any](
 	mux.HandleFunc("/healthz", healthz(cfg, hcheck, isPrivate)) // health check endpoint.
 
 	// lambda relays need to call to an in-memory server of the final mux setup.
-	final := stdhttpware.Apply(mux, logs)
+	final := stdhttpware.Apply(mux, logs, cfg.SensitiveHeaders)
 	if len(lambdaRelays) > 0 {
 		sys, err := newInMemSysClient(licecycle, cfg, final, newPrivateClientFn)
 		if err != nil {
