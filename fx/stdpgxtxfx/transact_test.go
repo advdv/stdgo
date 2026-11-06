@@ -15,6 +15,7 @@ import (
 	"github.com/advdv/stdgo/stdtx"
 	"github.com/advdv/stdgo/stdtx/stdtxpgxv5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -70,4 +71,29 @@ func setup(tb testing.TB, other ...any) (context.Context, *stdtx.Transactor[pgx.
 	ctx = stdctx.WithLogger(ctx, deps.Logger)
 
 	return ctx, deps.RO, deps.RW
+}
+
+func TestReadOnlyPoolIsReadOnlyOutsideTransactions(t *testing.T) {
+	t.Parallel()
+
+	var deps struct {
+		fx.In
+		RW *pgxpool.Pool `name:"rw"`
+		RO *pgxpool.Pool `name:"ro"`
+	}
+
+	setup(t, &deps)
+
+	for _, tc := range []struct {
+		name string
+		pool *pgxpool.Pool
+		want string
+	}{
+		{"rw", deps.RW, "off"},
+		{"ro", deps.RO, "on"},
+	} {
+		var readOnly string
+		require.NoError(t, tc.pool.QueryRow(t.Context(), `SHOW transaction_read_only`).Scan(&readOnly))
+		require.Equal(t, tc.want, readOnly, tc.name)
+	}
 }

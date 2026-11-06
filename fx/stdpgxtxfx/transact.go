@@ -76,6 +76,10 @@ func Provide(applicationName string) fx.Option {
 		}),
 		stdpgxfx.ProvideDeriver("ro", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
 			base.ConnConfig.RuntimeParams["application_name"] = applicationName + "-ro"
+			// Make read-only a property of the pool rather than only of the transactions the
+			// read-only transactor begins, so queries on the pool outside a transaction (such
+			// as health checks) can't write either.
+			base.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
 			return base
 		}),
 	)

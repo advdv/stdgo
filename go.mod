@@ -7,6 +7,7 @@ require (
 	buf.build/go/protovalidate v1.0.0
 	connectrpc.com/authn v0.2.0
 	connectrpc.com/connect v1.18.1
+	connectrpc.com/connect/v2 v2.0.2
 	connectrpc.com/cors v0.1.0
 	connectrpc.com/validate v0.3.0
 	entgo.io/ent v0.14.5
@@ -68,7 +69,7 @@ require (
 	golang.org/x/oauth2 v0.28.0
 	google.golang.org/genproto v0.0.0-20250122153221-138b5a5a4fd4
 	google.golang.org/grpc v1.71.0
-	google.golang.org/protobuf v1.36.9
+	google.golang.org/protobuf v1.36.11
 	riverqueue.com/riverui v0.10.0
 )
 
