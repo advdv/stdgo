@@ -67,6 +67,7 @@ require (
 	go.temporal.io/sdk v1.36.0
 	go.uber.org/fx v1.23.0
 	go.uber.org/zap v1.27.0
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/oauth2 v0.28.0
 	google.golang.org/genproto v0.0.0-20250122153221-138b5a5a4fd4
 	google.golang.org/grpc v1.71.0
@@ -236,7 +237,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect

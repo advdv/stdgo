@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: things
+  version: v1
+servers:
+  - url: /rest
+paths:
+  /v1/things:
+    post:
+      tags:
+        - ThingService
+      summary: CreateThing
+      operationId: ThingService_CreateThing
+      parameters:
+        - name: thingId
+          in: query
+          required: false
+          schema:
+            type: string
+            example: 01936d3c-8f4a-7b2e-9c1d-5e6f7a8b9c0d
+            title: thing_id
+      requestBody:
+        description: The thing to create.
+        content:
+          application/json:
+            schema:
+              title: thing
+              description: The thing to create.
+              allOf:
+                - $ref: '#/components/schemas/things.v1.Thing'
+      responses:
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/google.rpc.Status'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/things.v1.Thing'
+components:
+  schemas:
+    google.rpc.Status:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+      description: The Status type defines a logical error model.
+    things.v1.Thing:
+      type: object
+      properties:
+        name:
+          type: string
+          example: things/01936d3c-8f4a-7b2e-9c1d-5e6f7a8b9c0d
+          title: name
+        count:
+          type: integer
+          minimum: 0
+          format: int32
+          exclusiveMinimum: true
+        note:
+          type: string
+          title: note
+          nullable: true
+        mask:
+          title: mask
+          enum:
+            - ""
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.FieldMask'
+      title: Thing
+      additionalProperties: false
+      description: A thing.
+    google.protobuf.FieldMask:
+      type: string
+      description: Comma-separated field paths.
