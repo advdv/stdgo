@@ -21,6 +21,7 @@ import (
 var serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
 func TestServeNoName(t *testing.T) {
+	t.Setenv("STDHTTPSERVER_BIND_ADDR_PORT", freeAddr(t))
 	t.Setenv("STDHTTPSERVER_READ_TIMEOUT", "60s")
 	t.Setenv("STDHTTPSERVER_READ_HEADER_TIMEOUT", "2s")
 
@@ -51,6 +52,8 @@ func TestServeNoName(t *testing.T) {
 }
 
 func TestServeNamed(t *testing.T) {
+	t.Setenv("STDHTTPSERVER_WEB_BIND_ADDR_PORT", freeAddr(t))
+
 	var addr netip.AddrPort
 
 	ctx, app := t.Context(), fx.New(
@@ -69,8 +72,8 @@ func TestServeNamed(t *testing.T) {
 }
 
 func TestTwoNamedServes(t *testing.T) {
-	t.Setenv("STDHTTPSERVER_A_BIND_ADDR_PORT", "0.0.0.0:8181")
-	t.Setenv("STDHTTPSERVER_B_BIND_ADDR_PORT", "0.0.0.0:8383")
+	t.Setenv("STDHTTPSERVER_A_BIND_ADDR_PORT", freeAddr(t))
+	t.Setenv("STDHTTPSERVER_B_BIND_ADDR_PORT", freeAddr(t))
 
 	var deps struct {
 		fx.In
@@ -150,6 +153,9 @@ func TestPortNotBoundWhenAppFailsToInitialize(t *testing.T) {
 	require.NoError(t, lnr.Close())
 }
 
+// freeAddr returns an address on a port that the OS reports as free, so tests
+// do not collide with servers that already run on the machine, such as an app
+// on the default port.
 func freeAddr(tb testing.TB) string {
 	tb.Helper()
 

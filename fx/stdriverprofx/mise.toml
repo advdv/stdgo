@@ -1,0 +1,12 @@
+# This module imports River Pro (riverqueue.com/riverpro), a private module that
+# River serves from its own Go module proxy, behind its license key. Building,
+# testing, or linting it needs that key in RIVER_PRO_SECRET; the rest of stdgo
+# builds without it, so only this directory sets these up.
+#
+# To work on this module and the root module together, use a go.work at the
+# repository root (git ignores it) with `use . ./fx/stdriverprofx`, and run the
+# root module's commands with GOWORK=off, so they never need the key.
+[env]
+GOPROXY = 'https://proxy.golang.org,https://river:{{ get_env(name="RIVER_PRO_SECRET", default="") }}@riverqueue.com/goproxy,direct'
+# River's proxy is not in the public checksum database.
+GONOSUMDB = "riverqueue.com/riverpro"

@@ -46,11 +46,12 @@ linters:
               desc: force our own utility package
         # River Pro is private and needs a license key to download, so this
         # public module must not require it; River Pro code goes in a module
-        # of its own.
+        # of its own: fx/stdriverprofx, which this config also lints.
         no_river_pro:
           list-mode: lax
           files:
             - $all
+            - "!**/fx/stdriverprofx/**"
           deny:
             - pkg: riverqueue.com/riverpro
               desc: this module must build without River Pro's license key; put River Pro code in a module of its own
