@@ -1,6 +1,7 @@
 package stds3fx_test
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/advdv/stdgo/fx/stds3fx"
 	"github.com/advdv/stdgo/fx/stds3fx/stds3test"
+	"github.com/advdv/stdgo/stdtestcontainer"
 	"github.com/carlmjohnson/requests"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
@@ -190,4 +192,70 @@ func TestPresignPostEnforcesConditions(t *testing.T) {
 			assert.True(t, requests.HasStatusErr(err, tc.wantStatus), "error: %v", err)
 		})
 	}
+}
+
+// publicEndpoint returns another address of the test server than the one the
+// client connects to, as a browser outside the service's network would use.
+func publicEndpoint(tb testing.TB) (internal, public *url.URL) {
+	tb.Helper()
+
+	internal, err := url.Parse(stdtestcontainer.S3(tb, s3Image))
+	require.NoError(tb, err)
+
+	other := map[string]string{"localhost": "127.0.0.1", "127.0.0.1": "localhost"}[internal.Hostname()]
+	require.NotEmpty(tb, other, "endpoint host %q has no alias", internal.Hostname())
+
+	public = &url.URL{Scheme: internal.Scheme, Host: net.JoinHostPort(other, internal.Port())}
+
+	return internal, public
+}
+
+// Requests are signed for the public endpoint, which clients reach, and not
+// for the endpoint the service connects to: the signature covers the host.
+func TestPresignSignsForPublicEndpoint(t *testing.T) {
+	t.Parallel()
+
+	internal, public := publicEndpoint(t)
+	client := setup(t, map[string]string{"STDS3_PUBLIC_ENDPOINT": public.String()})
+	bucket := mainBucket(t, client)
+	content := []byte("tiny")
+
+	put, err := client.PresignPut(t.Context(), bucket, "put", time.Minute, declared("text/plain", len(content)))
+	require.NoError(t, err)
+
+	post, err := client.PresignPost(t.Context(), bucket, "post", time.Minute, stds3fx.PostConditions{})
+	require.NoError(t, err)
+
+	for _, req := range []*stds3fx.PresignedRequest{put, post} {
+		requireHost(t, public.Host, req)
+
+		_, _, err = stds3test.Send(t, req, content)
+		require.NoError(t, err, req.Method)
+	}
+
+	get, err := client.PresignGet(t.Context(), bucket, "put", time.Minute, nil)
+	require.NoError(t, err)
+	requireHost(t, public.Host, get)
+
+	_, body, err := stds3test.Send(t, get, nil)
+	require.NoError(t, err)
+	assert.Equal(t, content, body)
+
+	moved, err := url.Parse(get.URL)
+	require.NoError(t, err)
+
+	moved.Host = internal.Host
+	get.URL = moved.String()
+
+	_, _, err = stds3test.Send(t, get, nil)
+	assert.True(t, requests.HasStatusErr(err, http.StatusForbidden), "error: %v", err)
+}
+
+// requireHost requires req to be addressed to host.
+func requireHost(tb testing.TB, host string, req *stds3fx.PresignedRequest) {
+	tb.Helper()
+
+	parsed, err := url.Parse(req.URL)
+	require.NoError(tb, err)
+	require.Equal(tb, host, parsed.Host, req.Method)
 }

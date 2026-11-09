@@ -6,6 +6,10 @@
 // the way AWS SDKs do, from the environment, the shared credentials file, or
 // the role of the EC2 instance, ECS task or Kubernetes service account.
 //
+// Pre-signed requests are signed for STDS3_PUBLIC_ENDPOINT when it is set, for
+// clients that reach the server at another address than the service does, such
+// as a browser on the host of a Docker Compose network the service runs in.
+//
 // Tests get isolated buckets the way they get isolated databases: with
 // STDS3_CREATE_AND_USE_RANDOM_BUCKETS every configured bucket name gets a
 // random suffix and is created when the fx application starts, and with
@@ -39,6 +43,10 @@ type Config struct {
 	// Endpoint is the URL of the S3 API, of AWS or an S3-compatible server. Its scheme
 	// decides whether the client uses TLS.
 	Endpoint string `env:"ENDPOINT" envDefault:"https://s3.amazonaws.com"`
+	// PublicEndpoint is the URL clients send pre-signed requests to, when it is
+	// not Endpoint. A signature covers the host, so a request signed for one
+	// address fails at another. Leave it unset where both are the same.
+	PublicEndpoint string `env:"PUBLIC_ENDPOINT"`
 	// Region is the region the client signs for. Setting it spares the client
 	// a bucket location lookup; most S3-compatible servers accept any region.
 	Region string `env:"REGION" envDefault:"us-east-1"`
@@ -61,6 +69,7 @@ type Client struct {
 	cfg     Config
 	logs    *zap.Logger
 	s3      *minio.Client
+	signer  *minio.Client
 	buckets map[string]string
 }
 
@@ -90,16 +99,27 @@ func New(params Params) (*Client, error) {
 		return nil, errors.Wrap(err, "resolve bucket names")
 	}
 
-	s3, err := newS3Client(cfg.Endpoint, cfg.Region, newCredentials(cfg))
+	creds := newCredentials(cfg)
+
+	s3, err := newS3Client(cfg.Endpoint, cfg.Region, creds)
 	if err != nil {
 		return nil, errors.Wrap(err, "STDS3_ENDPOINT")
 	}
 
-	client := &Client{cfg: cfg, logs: params.Logs, s3: s3, buckets: buckets}
+	// The signer only signs, which needs no request since the region is set.
+	signer := s3
+	if cfg.PublicEndpoint != "" {
+		if signer, err = newS3Client(cfg.PublicEndpoint, cfg.Region, creds); err != nil {
+			return nil, errors.Wrap(err, "STDS3_PUBLIC_ENDPOINT")
+		}
+	}
+
+	client := &Client{cfg: cfg, logs: params.Logs, s3: s3, signer: signer, buckets: buckets}
 
 	params.Logs.Info("s3 client configured",
 		zap.Strings("bucket_aliases", slices.Sorted(maps.Keys(buckets))),
 		zap.String("endpoint", cfg.Endpoint),
+		zap.String("public_endpoint", cfg.PublicEndpoint),
 		zap.Bool("static_credentials", cfg.AccessKey != ""),
 		zap.Bool("random_buckets", cfg.CreateAndUseRandomBuckets))
 

@@ -12,7 +12,8 @@ import (
 
 // PresignedRequest is a request that a client sends to object storage
 // directly, without credentials of its own: the signature in URL, or in Fields
-// for a POST, grants it, until ExpiresAt. Clients send it with stds3test.Send
+// for a POST, grants it, until ExpiresAt. It is signed for
+// STDS3_PUBLIC_ENDPOINT when that is set. Clients send it with stds3test.Send
 // in tests.
 type PresignedRequest struct {
 	Method string
@@ -51,7 +52,7 @@ func (c *Client) PresignPut(
 
 	expiresAt := time.Now().Add(ttl)
 
-	presigned, err := c.s3.PresignHeader(ctx, http.MethodPut, bucket, key, ttl, nil, signed)
+	presigned, err := c.signer.PresignHeader(ctx, http.MethodPut, bucket, key, ttl, nil, signed)
 	if err != nil {
 		return nil, errors.Wrap(err, "presign put")
 	}
@@ -97,7 +98,7 @@ func (c *Client) PresignPost(
 		}
 	}
 
-	presigned, fields, err := c.s3.PresignedPostPolicy(ctx, policy)
+	presigned, fields, err := c.signer.PresignedPostPolicy(ctx, policy)
 	if err != nil {
 		return nil, errors.Wrap(err, "presign post")
 	}
@@ -119,7 +120,7 @@ func (c *Client) PresignGet(
 ) (*PresignedRequest, error) {
 	expiresAt := time.Now().Add(ttl)
 
-	presigned, err := c.s3.PresignedGetObject(ctx, bucket, key, ttl, params)
+	presigned, err := c.signer.PresignedGetObject(ctx, bucket, key, ttl, params)
 	if err != nil {
 		return nil, errors.Wrap(err, "presign get")
 	}
