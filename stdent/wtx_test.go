@@ -106,6 +106,34 @@ func TestTxExceedMaxCostsExecDisabled(t *testing.T) {
 	require.NoError(t, rows.Close())
 }
 
+// A scan that the planner had to use although it is disabled fails the query
+// wherever it is in the plan, whatever the plan costs, while an index lookup
+// passes.
+func TestTxDisabledSeqScan(t *testing.T) {
+	ctx := setup1(t)
+	tx := setupTx(t, ctx, 1e15)
+
+	ddlCtx := stdent.WithNoTestForMaxQueryPlanCosts(ctx)
+	for _, query := range []string{
+		`CREATE TEMP TABLE tmp_a (id BIGINT PRIMARY KEY) ON COMMIT DROP`,
+		`CREATE TEMP TABLE tmp_b (id BIGINT PRIMARY KEY, a_id BIGINT) ON COMMIT DROP`,
+		`INSERT INTO tmp_a SELECT generate_series(1, 10000)`,
+		`INSERT INTO tmp_b SELECT g, g FROM generate_series(1, 10000) g`,
+		`ANALYZE tmp_a, tmp_b`,
+	} {
+		require.NoError(t, tx.Exec(ddlCtx, query, []any{}, nil))
+	}
+
+	// tmp_b has no index on a_id, so the join scans it below an index scan.
+	var rows entsql.Rows
+	err := tx.Query(ctx, `SELECT tmp_a.id, tmp_b.id FROM tmp_a JOIN tmp_b ON tmp_b.a_id = tmp_a.id WHERE tmp_a.id = 5`,
+		[]any{}, &rows)
+	require.ErrorContains(t, err, `query plan uses a disabled Seq Scan on "tmp_b"`)
+
+	require.NoError(t, tx.Query(ctx, `SELECT id FROM tmp_b WHERE id = 5`, []any{}, &rows))
+	require.NoError(t, rows.Close())
+}
+
 func TestBeginHook(t *testing.T) {
 	var called bool
 

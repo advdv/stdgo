@@ -99,7 +99,7 @@ func (tx WTx) do(
 		return fmt.Errorf("failed to cast WTx into sql.Tx: %w", err)
 	}
 
-	// plan describes a query plan with the cost, see:
+	// plan describes a node of a query plan, and the nodes below it, see:
 	// https://github.com/postgres/postgres/blob/master/src/backend/commands/explain.c#L1297
 	type plan struct {
 		NodeType     string  `json:"Node Type"`
@@ -107,6 +107,10 @@ func (tx WTx) do(
 		RelationName string  `json:"Relation Name"`
 		IndexName    string  `json:"Index Name"`
 		TotalCost    float64 `json:"Total Cost"`
+		// Disabled is set, from PostgreSQL 18 on, on a node that a disabled
+		// planner method produced, such as a Seq Scan with enable_seqscan off.
+		Disabled bool   `json:"Disabled"`
+		Plans    []plan `json:"Plans"`
 	}
 
 	// explanation of the query.
@@ -131,6 +135,22 @@ func (tx WTx) do(
 		return fmt.Errorf("failed to unmarshal query plan json: %w", err)
 	}
 
+	// firstDisabled returns the first node of p, depth first, that is disabled.
+	var firstDisabled func(p plan) (plan, bool)
+	firstDisabled = func(p plan) (plan, bool) {
+		if p.Disabled {
+			return p, true
+		}
+
+		for _, child := range p.Plans {
+			if disabled, ok := firstDisabled(child); ok {
+				return disabled, true
+			}
+		}
+
+		return plan{}, false
+	}
+
 	var cumCostOfAllPlans float64
 
 	for i, plan := range expl {
@@ -139,6 +159,14 @@ func (tx WTx) do(
 			zap.String("plan_node_type", plan.Plan.NodeType),
 			zap.String("plan_operation", plan.Plan.NodeType),
 			zap.Float64("plan_total_cost", plan.Plan.TotalCost))
+
+		// Up to PostgreSQL 17, a disabled method adds a huge cost to its node and
+		// every node above it, which the cost check below catches. PostgreSQL 18
+		// marks the node disabled instead, at its usual cost, so look for it.
+		if disabled, ok := firstDisabled(plan.Plan); ok {
+			return fmt.Errorf("query plan uses a disabled %s on %q (missing index?), query: %s, plan: %s",
+				disabled.NodeType, disabled.RelationName, query, explJSON)
+		}
 
 		cumCostOfAllPlans += plan.Plan.TotalCost
 	}
