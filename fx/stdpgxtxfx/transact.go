@@ -11,11 +11,16 @@ import (
 	"github.com/peterldowns/pgtestdb"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Config configures the transact components.
 type Config struct {
 	TestMaxQueryCosts float64 `env:"TEST_MAX_QUERY_COSTS"`
+	// ExecQueryLogLevel is the level at which transactions log each statement
+	// they run, with its arguments. It defaults to debug, so the logs of a
+	// service at info do not repeat every statement.
+	ExecQueryLogLevel zapcore.Level `env:"EXEC_QUERY_LOG_LEVEL" envDefault:"debug"`
 }
 
 // Params describe fx params for creating the transactors.
@@ -40,7 +45,7 @@ func New(params Params) (Result, error) {
 	// Both pools default to repeatable-read (the driver default). This is the strictest
 	// isolation level that is accepted on Aurora hot standbys, so it must be used
 	// uniformly to keep RW and RO behaving consistently across regions.
-	opts := []stdtxpgxv5.Option{}
+	opts := []stdtxpgxv5.Option{stdtxpgxv5.ExecQueryLoggingLevel(params.ExecQueryLogLevel)}
 	if params.TxBeginSQL != nil {
 		opts = append(opts, stdtxpgxv5.BeginWithSQL(params.TxBeginSQL))
 	}

@@ -21,6 +21,7 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestSetup(t *testing.T) {
@@ -46,6 +47,17 @@ func testHook(logs *zap.Logger) (out struct {
 }
 
 func setup(tb testing.TB, other ...any) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
+	tb.Helper()
+
+	return setupEnv(tb, nil, other...)
+}
+
+// setupEnv is like setup, with env as the environment.
+func setupEnv(
+	tb testing.TB, env map[string]string, other ...any,
+) (context.Context, *stdtx.Transactor[pgx.Tx], *stdtx.Transactor[pgx.Tx]) {
+	tb.Helper()
+
 	var deps struct {
 		fx.In
 		*zap.Logger
@@ -54,7 +66,7 @@ func setup(tb testing.TB, other ...any) (context.Context, *stdtx.Transactor[pgx.
 	}
 
 	app := fxtest.New(tb,
-		stdenvcfg.ProvideExplicitEnvironment(nil),
+		stdenvcfg.ProvideExplicitEnvironment(env),
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdpgxtestfx.Provide(tb, stdtestpg.Image, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
@@ -95,5 +107,36 @@ func TestReadOnlyPoolIsReadOnlyOutsideTransactions(t *testing.T) {
 		var readOnly string
 		require.NoError(t, tc.pool.QueryRow(t.Context(), `SHOW transaction_read_only`).Scan(&readOnly))
 		require.Equal(t, tc.want, readOnly, tc.name)
+	}
+}
+
+// Transactions log the statements they run at debug, below the info level
+// that services log at, unless configured otherwise.
+func TestStatementLogLevel(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want int
+	}{
+		{"default", nil, 0},
+		{"info", map[string]string{"STDPGXTXFX_EXEC_QUERY_LOG_LEVEL": "info"}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var obs *observer.ObservedLogs
+
+			ctx, _, rw := setupEnv(t, tc.env, &obs)
+
+			require.NoError(t, stdtx.Transact0(ctx, rw, func(ctx context.Context, tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, `SELECT 1`)
+
+				return err
+			}))
+
+			require.Len(t, obs.FilterMessage("exec").FilterField(zap.String("sql", `SELECT 1`)).All(), tc.want)
+		})
 	}
 }
