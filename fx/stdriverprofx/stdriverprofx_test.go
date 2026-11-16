@@ -6,6 +6,7 @@ import (
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
+	"github.com/advdv/stdgo/fx/stdpgxtxfx"
 	"github.com/advdv/stdgo/fx/stdriverfx/v2"
 	"github.com/advdv/stdgo/fx/stdriverfx/v2/stdrivertest"
 	"github.com/advdv/stdgo/fx/stdriverprofx"
@@ -13,13 +14,13 @@ import (
 	"github.com/advdv/stdgo/fx/stdzapfx"
 	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdenvcfg"
+	"github.com/advdv/stdgo/stdtx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
-	"go.uber.org/zap"
 	"riverqueue.com/riverpro"
 )
 
@@ -48,21 +49,21 @@ func (completeTxArgs) Kind() string { return "stdriverpro_test_complete_tx" }
 type completeTxWorker struct {
 	river.WorkerDefaults[completeTxArgs]
 
-	pool *pgxpool.Pool
+	txr *stdtx.Transactor[pgx.Tx]
 }
 
 type completeTxParams struct {
 	fx.In
 
-	Pool *pgxpool.Pool `name:"rw"`
+	RW *stdtx.Transactor[pgx.Tx] `name:"rw"`
 }
 
 func newCompleteTxWorker(p completeTxParams) *completeTxWorker {
-	return &completeTxWorker{pool: p.Pool}
+	return &completeTxWorker{txr: p.RW}
 }
 
 func (w *completeTxWorker) Work(ctx context.Context, job *river.Job[completeTxArgs]) error {
-	return stdriverfx.CompleteTx(ctx, w.pool, job, func(ctx context.Context, tx pgx.Tx) error {
+	return stdriverfx.CompleteTx(ctx, w.txr, job, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := riverpro.ClientFromContext[pgx.Tx](ctx).InsertTx(ctx, tx, echoArgs{Message: "in tx"}, nil)
 
 		return err
@@ -79,7 +80,8 @@ type deps struct {
 
 // setup starts an app with River Pro's clients, on a database of its own whose
 // River tables, River Pro's included, testmigrate created in the default
-// schema, and the test workers registered. The "ro" pool is read-only, as an
+// schema, the transactors that stdpgxtxfx provides on its pools, and the test
+// workers registered. stdpgxtxfx also makes the "ro" pool read-only, as an
 // app's would be.
 func setup(tb testing.TB) deps {
 	tb.Helper()
@@ -91,11 +93,7 @@ func setup(tb testing.TB) deps {
 		stdzapfx.Fx(),
 		stdzapfx.TestProvide(tb),
 		stdpgxtestfx.Provide(tb, stdtestpg.Image, testmigrate.Migrator, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
-		stdpgxfx.ProvideDeriver("ro", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
-			base.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
-
-			return base
-		}),
+		stdpgxtxfx.Provide("stdriverpro_test"),
 		stdriverfx.Provide(stdriverprofx.NewClient),
 		stdriverfx.ProvideWorker[echoArgs](newEchoWorker),
 		stdriverfx.ProvideWorker[completeTxArgs](newCompleteTxWorker),
