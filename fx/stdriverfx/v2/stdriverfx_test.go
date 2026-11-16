@@ -8,6 +8,7 @@ import (
 
 	"github.com/advdv/stdgo/fx/stdpgxfx"
 	"github.com/advdv/stdgo/fx/stdpgxfx/stdpgxtestfx"
+	"github.com/advdv/stdgo/fx/stdpgxtxfx"
 	"github.com/advdv/stdgo/fx/stdriverfx/v2"
 	"github.com/advdv/stdgo/fx/stdriverfx/v2/internal/testmigrate"
 	"github.com/advdv/stdgo/fx/stdriverfx/v2/stdrivertest"
@@ -15,6 +16,7 @@ import (
 	"github.com/advdv/stdgo/internal/stdtestpg"
 	"github.com/advdv/stdgo/stdctx"
 	"github.com/advdv/stdgo/stdenvcfg"
+	"github.com/advdv/stdgo/stdtx"
 	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -59,23 +61,23 @@ func (completeTxArgs) Kind() string { return "stdriver_test_complete_tx" }
 type completeTxWorker struct {
 	river.WorkerDefaults[completeTxArgs]
 
-	pool *pgxpool.Pool
+	txr *stdtx.Transactor[pgx.Tx]
 }
 
 type completeTxParams struct {
 	fx.In
 
-	Pool *pgxpool.Pool `name:"rw"`
+	RW *stdtx.Transactor[pgx.Tx] `name:"rw"`
 }
 
 func newCompleteTxWorker(p completeTxParams) *completeTxWorker {
-	return &completeTxWorker{pool: p.Pool}
+	return &completeTxWorker{txr: p.RW}
 }
 
 var errFail = errors.New("fail")
 
 func (w *completeTxWorker) Work(ctx context.Context, job *river.Job[completeTxArgs]) error {
-	return stdriverfx.CompleteTx(ctx, w.pool, job, func(ctx context.Context, tx pgx.Tx) error {
+	return stdriverfx.CompleteTx(ctx, w.txr, job, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := river.ClientFromContext[pgx.Tx](ctx).InsertTx(ctx, tx, echoArgs{Message: "in tx"}, nil); err != nil {
 			return err
 		}
@@ -97,18 +99,15 @@ type deps struct {
 }
 
 // provide gives a test app open-source River's clients, on a database of its
-// own whose River tables testmigrate created in the default schema. The "ro"
-// pool is read-only, as an app's would be.
+// own whose River tables testmigrate created in the default schema, and the
+// transactors that stdpgxtxfx provides on its pools, which also makes the "ro"
+// pool read-only, as an app's would be.
 func provide(tb testing.TB) fx.Option {
 	tb.Helper()
 
 	return fx.Options(
 		stdpgxtestfx.Provide(tb, stdtestpg.Image, testmigrate.Migrator, stdpgxfx.NewPgxV5Driver(), "rw", "ro"),
-		stdpgxfx.ProvideDeriver("ro", func(_ *zap.Logger, base *pgxpool.Config) *pgxpool.Config {
-			base.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
-
-			return base
-		}),
+		stdpgxtxfx.Provide("stdriver_test"),
 		stdriverfx.Provide(stdriverfx.NewClient),
 	)
 }
