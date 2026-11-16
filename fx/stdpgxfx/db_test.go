@@ -319,6 +319,50 @@ func TestProvideTest(t *testing.T) {
 	require.NotNil(t, res.DB1)
 }
 
+func TestProvideTestCapsPoolConns(t *testing.T) {
+	_, shared := setup(t)
+
+	var res struct {
+		fx.In
+		DB0 *pgxpool.Pool `name:"db0"`
+		DB1 *pgxpool.Pool `name:"db1"`
+	}
+
+	app := fxtest.New(t, shared,
+		stdpgxfx.TestProvide(t, pgtestdb.NoopMigrator{}, stdpgxfx.NewPgxV5Driver(), "db0", "db1"),
+		fx.Populate(&res))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	// The main pool and the derived pool each, at TestProvide's default.
+	require.Equal(t, int32(10), res.DB0.Config().MaxConns)
+	require.Equal(t, int32(10), res.DB1.Config().MaxConns)
+}
+
+func TestProvidePoolMaxConns(t *testing.T) {
+	var res struct {
+		fx.In
+		DB0 *pgxpool.Pool `name:"db0"`
+		DB1 *pgxpool.Pool `name:"db1"`
+	}
+
+	app := fxtest.New(t,
+		stdzapfx.Fx(),
+		stdzapfx.TestProvide(t),
+		stdenvcfg.ProvideExplicitEnvironment(map[string]string{
+			// The setting wins over the URL's pool_max_conns.
+			"STDPGX_MAIN_DATABASE_URL": "postgresql://postgres:postgres@localhost:5440/postgres?pool_max_conns=7",
+			"STDPGX_POOL_MAX_CONNS":    "3",
+		}),
+		stdpgxfx.Provide(stdpgxfx.NewPgxV5Driver(), "db0", "db1"),
+		fx.Populate(&res))
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	require.Equal(t, int32(3), res.DB0.Config().MaxConns)
+	require.Equal(t, int32(3), res.DB1.Config().MaxConns)
+}
+
 func TestProvideTestWithMigrator(t *testing.T) {
 	ctx, shared := setup(t)
 

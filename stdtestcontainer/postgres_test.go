@@ -22,4 +22,8 @@ func TestPostgres(t *testing.T) {
 	var version int
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT current_setting('server_version_num')::int`).Scan(&version))
 	require.GreaterOrEqual(t, version, 180000, "runs the requested image")
+
+	var maxConns int
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT current_setting('max_connections')::int`).Scan(&maxConns))
+	require.Equal(t, stdtestcontainer.PostgresMaxConnections, maxConns)
 }

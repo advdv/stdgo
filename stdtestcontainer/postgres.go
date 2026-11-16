@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,13 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
+
+// PostgresMaxConnections is the max_connections of the server that Postgres
+// starts. It leaves room for test packages that run in parallel, each with
+// parallel tests whose pools stdpgxfx.TestProvide caps (STDPGX_POOL_MAX_CONNS).
+// It is one value for the whole run, because every test package shares the
+// server, and the first to start it sets its flags.
+const PostgresMaxConnections = 2000
 
 // postgresStartTimeout bounds pulling the image and waiting for the server to accept connections.
 const postgresStartTimeout = 2 * time.Minute
@@ -72,7 +80,10 @@ func startPostgres(ctx context.Context, image string) (string, error) {
 		testcontainers.WithReuseByName(postgresContainerName(image, testcontainers.SessionID())),
 		// Tests need no durability: keep the data in memory and write as little WAL as possible.
 		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql": "rw"}),
-		testcontainers.WithCmdArgs("-c", "wal_level=minimal", "-c", "max_wal_senders=0"),
+		testcontainers.WithCmdArgs("-c", "wal_level=minimal", "-c", "max_wal_senders=0",
+			// Every test package of the run shares this server, each with tests in parallel that
+			// open pools of their own; PostgreSQL's default of 100 is sized for one application.
+			"-c", "max_connections="+strconv.Itoa(PostgresMaxConnections)),
 		postgres.BasicWaitStrategies(),
 	)
 	if err != nil {

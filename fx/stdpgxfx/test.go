@@ -10,6 +10,15 @@ import (
 	"go.uber.org/fx"
 )
 
+// testPoolMaxConns is the Config.PoolMaxConns that TestProvide uses when it is
+// unset. Without a cap, pgxpool allows as many connections as the machine has
+// CPUs, per pool; tests run in parallel, every test package of a run shares one
+// PostgreSQL server (stdtestcontainer.Postgres), and that server refuses
+// connections beyond its max_connections. A fixed cap keeps the server's peak
+// bounded however many CPUs run the tests, and pools open connections only as
+// they need them.
+const testPoolMaxConns = 10
+
 // an fx.In that is build by composing.
 type testConfigProviderParams struct {
 	Params
@@ -32,6 +41,15 @@ func newTestConfigProvider(tb testing.TB) func(testConfigProviderParams) (Result
 				return res, fmt.Errorf("failed to migrate: %w", err)
 			}
 		}
+
+		// The migrator may replace the config that New capped. Every pool derives
+		// from this one, so the cap holds for each of them.
+		maxConns := p.Config.PoolMaxConns
+		if maxConns == 0 {
+			maxConns = testPoolMaxConns
+		}
+
+		applyPoolMaxConns(baseRes.PoolConfig, maxConns)
 
 		return baseRes, nil
 	}

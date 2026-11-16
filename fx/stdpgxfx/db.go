@@ -38,6 +38,11 @@ type Config struct {
 	// An override wins over name-based conventions (i.e., when a pool's host is
 	// overridden, the cluster-ro auto-rewrite is skipped).
 	Hosts map[string]string `env:"HOSTS"`
+	// PoolMaxConns caps the connections of each pool, main and derived. Zero
+	// keeps the pool_max_conns of MainDatabaseURL, or else pgxpool's default
+	// (the number of CPUs, at least 4). TestProvide defaults it to
+	// testPoolMaxConns instead.
+	PoolMaxConns int32 `env:"POOL_MAX_CONNS"`
 }
 
 // IamTokenFunc returns the password to use for a new connection when IamAuth is enabled.
@@ -97,7 +102,19 @@ func New(params Params) (r Result, err error) {
 		}
 	}
 
+	applyPoolMaxConns(pcfg, params.Config.PoolMaxConns)
+
 	return Result{PoolConfig: pcfg}, nil
+}
+
+// applyPoolMaxConns caps pcfg at maxConns connections, unless maxConns is zero.
+func applyPoolMaxConns(pcfg *pgxpool.Config, maxConns int32) {
+	if maxConns <= 0 {
+		return
+	}
+
+	pcfg.MaxConns = maxConns
+	pcfg.MinConns = min(pcfg.MinConns, maxConns)
 }
 
 // installIamAuthBeforeConnect wires up a pgxpool.Config.BeforeConnect hook that
