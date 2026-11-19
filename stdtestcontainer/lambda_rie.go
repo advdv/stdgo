@@ -70,32 +70,30 @@ func SetupLambdaRIEContainer(
 	}
 
 	container, err := CreateGenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:         imageName,
-			ImagePlatform: platform,
-			ExposedPorts:  []string{"8080/tcp"},
-			Files: []testcontainers.ContainerFile{
-				{
-					HostFilePath:      hostRieFilePath,
-					ContainerFilePath: "/aws-lambda-rie",
-					FileMode:          0o7777,
-				},
-				{
-					HostFilePath:      hostAWSCredentialsFilePath,
-					ContainerFilePath: "/root/.aws/credentials",
-					FileMode:          0o7777,
-				},
+		Image:         imageName,
+		ImagePlatform: platform,
+		ExposedPorts:  []string{"8080/tcp"},
+		Files: []testcontainers.ContainerFile{
+			{
+				HostFilePath:      hostRieFilePath,
+				ContainerFilePath: "/aws-lambda-rie",
+				FileMode:          0o7777,
 			},
-			Env:        env,
-			Entrypoint: append([]string{"/aws-lambda-rie"}, entrypoint...),
-			WaitingFor: wait.ForAll(
-				wait.ForLog("[INFO] (rapid) exec"),
-				wait.ForListeningPort("8080/tcp").SkipInternalCheck(),
-			),
-			LogConsumerCfg: &testcontainers.LogConsumerConfig{
-				Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
-				Consumers: []testcontainers.LogConsumer{logConsumer},
+			{
+				HostFilePath:      hostAWSCredentialsFilePath,
+				ContainerFilePath: "/root/.aws/credentials",
+				FileMode:          0o7777,
 			},
+		},
+		Env:        env,
+		Entrypoint: append([]string{"/aws-lambda-rie"}, entrypoint...),
+		WaitingFor: wait.ForAll(
+			wait.ForLog("[INFO] (rapid) exec"),
+			wait.ForListeningPort("8080/tcp").SkipInternalCheck(),
+		),
+		LogConsumerCfg: &testcontainers.LogConsumerConfig{
+			Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
+			Consumers: []testcontainers.LogConsumer{logConsumer},
 		},
 		Started: true,
 	})

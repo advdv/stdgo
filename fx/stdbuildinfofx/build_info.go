@@ -27,7 +27,7 @@ type Info struct{ version string }
 
 // New init the components.
 func New(p Params) (Result, error) {
-	return Result{Info: Info{version: p.Version}}, nil
+	return Result{version: p.Version}, nil
 }
 
 // Version as determined at build time.

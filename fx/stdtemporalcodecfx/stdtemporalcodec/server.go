@@ -31,8 +31,8 @@ const (
 //
 // If the input contains no dot it is returned unchanged.
 func StripCloudAccountSuffix(ns string) string {
-	if i := strings.LastIndex(ns, "."); i >= 0 {
-		return ns[:i]
+	if before, _, ok := strings.CutLast(ns, "."); ok {
+		return before
 	}
 	return ns
 }

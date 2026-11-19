@@ -40,7 +40,7 @@ func NewProtoInvoker[I, O any, IP interface {
 	proto.Message
 }](lambdaClient Lambda, functionName string) *ProtoInvoker[I, O, IP, OP] {
 	return &ProtoInvoker[I, O, IP, OP]{
-		baseInvoker: baseInvoker{client: lambdaClient, functionName: functionName},
+		client: lambdaClient, functionName: functionName,
 	}
 }
 
@@ -64,7 +64,7 @@ type Invoker[I, O any] struct {
 
 // NewInvoker inits the invoker.
 func NewInvoker[I, O any](lambdaClient Lambda, functionName string) *Invoker[I, O] {
-	return &Invoker[I, O]{baseInvoker: baseInvoker{client: lambdaClient, functionName: functionName}}
+	return &Invoker[I, O]{client: lambdaClient, functionName: functionName}
 }
 
 // Invoke invokes the lambda function.
