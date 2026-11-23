@@ -36,7 +36,7 @@ func Provide(tb testing.TB, image string) fx.Option {
 				"STDS3_AUTO_REMOVE_BUCKETS":           "true",
 			}
 			maps.Copy(out, env)
-			out["STDS3_ENDPOINT"] = stdtestcontainer.S3(tb, image)
+			out["STDS3_ENDPOINT"] = stdtestcontainer.S3(tb, image).Endpoint
 			out["STDS3_ACCESS_KEY"] = stdtestcontainer.S3AccessKey
 			out["STDS3_SECRET_KEY"] = stdtestcontainer.S3SecretKey
 

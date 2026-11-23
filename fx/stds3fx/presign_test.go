@@ -199,7 +199,7 @@ func TestPresignPostEnforcesConditions(t *testing.T) {
 func publicEndpoint(tb testing.TB) (internal, public *url.URL) {
 	tb.Helper()
 
-	internal, err := url.Parse(stdtestcontainer.S3(tb, s3Image))
+	internal, err := url.Parse(stdtestcontainer.S3(tb, s3Image).Endpoint)
 	require.NoError(tb, err)
 
 	other := map[string]string{"localhost": "127.0.0.1", "127.0.0.1": "localhost"}[internal.Hostname()]

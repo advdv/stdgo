@@ -1,4 +1,3 @@
-// Package stdtestcontainer provides re-usable code for using testcontainer-go.
 package stdtestcontainer
 
 import (

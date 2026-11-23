@@ -12,10 +12,10 @@ import (
 func TestPostgres(t *testing.T) {
 	t.Parallel()
 
-	url := stdtestcontainer.Postgres(t, "postgres:18")
-	require.Equal(t, url, stdtestcontainer.Postgres(t, "postgres:18"), "later calls share the server")
+	server := stdtestcontainer.Postgres(t, "postgres:18")
+	require.Equal(t, server, stdtestcontainer.Postgres(t, "postgres:18"), "later calls share the server")
 
-	conn, err := pgx.Connect(t.Context(), url)
+	conn, err := pgx.Connect(t.Context(), server.Endpoint)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close(context.WithoutCancel(t.Context())) })
 
@@ -26,4 +26,8 @@ func TestPostgres(t *testing.T) {
 	var maxConns int
 	require.NoError(t, conn.QueryRow(t.Context(), `SELECT current_setting('max_connections')::int`).Scan(&maxConns))
 	require.Equal(t, stdtestcontainer.PostgresMaxConnections, maxConns)
+
+	// Containers on the network connect with the same credentials; the
+	// image has psql.
+	requireRunsOnNetwork(t, "postgres:18", "psql", server.NetworkEndpoint, "-c", "SELECT 1")
 }

@@ -37,7 +37,7 @@ func Provide[DBT any](
 		fx.Decorate(func(env stdenvcfg.Environment) stdenvcfg.Environment {
 			out := stdenvcfg.Environment{}
 			maps.Copy(out, env)
-			out["STDPGX_MAIN_DATABASE_URL"] = stdtestcontainer.Postgres(tb, image)
+			out["STDPGX_MAIN_DATABASE_URL"] = stdtestcontainer.Postgres(tb, image).Endpoint
 
 			return out
 		}),

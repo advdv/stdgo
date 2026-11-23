@@ -30,6 +30,7 @@ require (
 	github.com/carlmjohnson/requests v0.24.3
 	github.com/cludden/protoc-gen-go-temporal v1.17.5
 	github.com/cockroachdb/errors v1.12.0
+	github.com/containerd/errdefs v1.0.0
 	github.com/danielgtaylor/huma/v2 v2.34.1
 	github.com/deatil/go-encoding v1.0.3003
 	github.com/destel/rill v0.6.0
@@ -48,6 +49,7 @@ require (
 	github.com/lestrrat-go/jwx/v3 v3.0.11
 	github.com/magefile/mage v1.15.0
 	github.com/minio/minio-go/v7 v7.4.1
+	github.com/moby/moby/client v0.6.2
 	github.com/peterldowns/pgtestdb v0.1.1
 	github.com/peterldowns/pgtestdb/migrators/goosemigrator v0.1.1
 	github.com/pressly/goose/v3 v3.24.0
@@ -114,7 +116,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
-	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
@@ -190,7 +191,6 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.3.3 // indirect
 	github.com/moby/moby/api v1.56.1 // indirect
-	github.com/moby/moby/client v0.6.2 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
 	github.com/moby/sys/user v0.4.1 // indirect
