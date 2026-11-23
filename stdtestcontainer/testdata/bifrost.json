@@ -1,0 +1,18 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "client": {
+    "disable_content_logging": true
+  },
+  "providers": {
+    "echo": {
+      "keys": [{ "name": "echo", "value": "env.ECHO_KEY", "models": ["*"], "weight": 1.0 }],
+      "network_config": { "base_url": "http://echo.invalid" },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": { "chat_completion": true }
+      }
+    }
+  },
+  "config_store": { "enabled": false },
+  "logs_store": { "enabled": false }
+}
