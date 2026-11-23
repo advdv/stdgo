@@ -9,6 +9,9 @@
 // Pre-signed requests are signed for STDS3_PUBLIC_ENDPOINT when it is set, for
 // clients that reach the server at another address than the service does, such
 // as a browser on the host of a Docker Compose network the service runs in.
+// [Client.Internal] signs them for STDS3_INTERNAL_ENDPOINT instead, which
+// defaults to STDS3_ENDPOINT, for services the service hands them to, such as
+// a document converter in its own network.
 //
 // Tests get isolated buckets the way they get isolated databases: with
 // STDS3_CREATE_AND_USE_RANDOM_BUCKETS every configured bucket name gets a
@@ -47,6 +50,10 @@ type Config struct {
 	// not Endpoint. A signature covers the host, so a request signed for one
 	// address fails at another. Leave it unset where both are the same.
 	PublicEndpoint string `env:"PUBLIC_ENDPOINT"`
+	// InternalEndpoint is the URL that services, which the service hands
+	// pre-signed requests to, send them to, when it is not Endpoint; see
+	// [Client.Internal]. Leave it unset where both are the same.
+	InternalEndpoint string `env:"INTERNAL_ENDPOINT"`
 	// Region is the region the client signs for. Setting it spares the client
 	// a bucket location lookup; most S3-compatible servers accept any region.
 	Region string `env:"REGION" envDefault:"us-east-1"`
@@ -66,11 +73,13 @@ type Config struct {
 // Client is the object storage client: the S3 client plus the resolved bucket
 // names. It is safe for concurrent use.
 type Client struct {
-	cfg     Config
-	logs    *zap.Logger
-	s3      *minio.Client
-	signer  *minio.Client
-	buckets map[string]string
+	cfg    Config
+	logs   *zap.Logger
+	s3     *minio.Client
+	signer *minio.Client
+	// internal signs for the services the service hands requests to.
+	internal *minio.Client
+	buckets  map[string]string
 }
 
 // Params is the fx input for [New].
@@ -101,31 +110,51 @@ func New(params Params) (*Client, error) {
 
 	creds := newCredentials(cfg)
 
-	s3, err := newS3Client(cfg.Endpoint, cfg.Region, creds)
+	objects, err := newS3Client(cfg.Endpoint, cfg.Region, creds)
 	if err != nil {
 		return nil, errors.Wrap(err, "STDS3_ENDPOINT")
 	}
 
 	// The signer only signs, which needs no request since the region is set.
-	signer := s3
+	signer := objects
 	if cfg.PublicEndpoint != "" {
 		if signer, err = newS3Client(cfg.PublicEndpoint, cfg.Region, creds); err != nil {
 			return nil, errors.Wrap(err, "STDS3_PUBLIC_ENDPOINT")
 		}
 	}
 
-	client := &Client{cfg: cfg, logs: params.Logs, s3: s3, signer: signer, buckets: buckets}
+	internal := objects
+	if cfg.InternalEndpoint != "" {
+		if internal, err = newS3Client(cfg.InternalEndpoint, cfg.Region, creds); err != nil {
+			return nil, errors.Wrap(err, "STDS3_INTERNAL_ENDPOINT")
+		}
+	}
+
+	client := &Client{cfg: cfg, logs: params.Logs, s3: objects, signer: signer, internal: internal, buckets: buckets}
 
 	params.Logs.Info("s3 client configured",
 		zap.Strings("bucket_aliases", slices.Sorted(maps.Keys(buckets))),
 		zap.String("endpoint", cfg.Endpoint),
 		zap.String("public_endpoint", cfg.PublicEndpoint),
+		zap.String("internal_endpoint", cfg.InternalEndpoint),
 		zap.Bool("static_credentials", cfg.AccessKey != ""),
 		zap.Bool("random_buckets", cfg.CreateAndUseRandomBuckets))
 
 	params.Append(fx.Hook{OnStart: client.start, OnStop: client.stop})
 
 	return client, nil
+}
+
+// Internal returns the client as it pre-signs requests for services that the
+// service hands them to, such as a document converter that downloads its input
+// or uploads its output: for STDS3_INTERNAL_ENDPOINT, or STDS3_ENDPOINT when
+// that is unset, instead of STDS3_PUBLIC_ENDPOINT. It shares everything else
+// with c.
+func (c *Client) Internal() *Client {
+	internal := *c
+	internal.signer = c.internal
+
+	return &internal
 }
 
 // S3 returns the underlying S3 client for object operations; callers get

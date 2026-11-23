@@ -13,8 +13,8 @@ import (
 // PresignedRequest is a request that a client sends to object storage
 // directly, without credentials of its own: the signature in URL, or in Fields
 // for a POST, grants it, until ExpiresAt. It is signed for
-// STDS3_PUBLIC_ENDPOINT when that is set. Clients send it with stds3test.Send
-// in tests.
+// STDS3_PUBLIC_ENDPOINT when that is set, or for STDS3_INTERNAL_ENDPOINT by
+// [Client.Internal]. Clients send it with stds3test.Send in tests.
 type PresignedRequest struct {
 	Method string
 	URL    string

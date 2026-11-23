@@ -23,20 +23,25 @@ import (
 // the one in STDS3_ENDPOINT, which it sets for the client along with the
 // server's credentials. It creates and removes random buckets unless the
 // environment sets STDS3_CREATE_AND_USE_RANDOM_BUCKETS or
-// STDS3_AUTO_REMOVE_BUCKETS itself. STDS3_BUCKETS stays the caller's to
-// set.
+// STDS3_AUTO_REMOVE_BUCKETS itself, and has [stds3fx.Client.Internal] sign for
+// the server's address on [stdtestcontainer.Network]
+// ([stdtestcontainer.Server.NetworkEndpoint]) unless it sets
+// STDS3_INTERNAL_ENDPOINT, so containers the tests start on that network can
+// send those requests. STDS3_BUCKETS stays the caller's to set.
 func Provide(tb testing.TB, image string) fx.Option {
 	tb.Helper()
 
 	return fx.Module("stds3test",
 		// Scoped to this module, so only the client sees the server.
 		fx.Decorate(func(env stdenvcfg.Environment) stdenvcfg.Environment {
+			server := stdtestcontainer.S3(tb, image)
 			out := stdenvcfg.Environment{
 				"STDS3_CREATE_AND_USE_RANDOM_BUCKETS": "true",
 				"STDS3_AUTO_REMOVE_BUCKETS":           "true",
+				"STDS3_INTERNAL_ENDPOINT":             server.NetworkEndpoint,
 			}
 			maps.Copy(out, env)
-			out["STDS3_ENDPOINT"] = stdtestcontainer.S3(tb, image).Endpoint
+			out["STDS3_ENDPOINT"] = server.Endpoint
 			out["STDS3_ACCESS_KEY"] = stdtestcontainer.S3AccessKey
 			out["STDS3_SECRET_KEY"] = stdtestcontainer.S3SecretKey
 

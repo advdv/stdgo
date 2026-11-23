@@ -15,6 +15,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // declared returns the headers of an upload of size bytes of contentType.
@@ -258,4 +260,69 @@ func requireHost(tb testing.TB, host string, req *stds3fx.PresignedRequest) {
 	parsed, err := url.Parse(req.URL)
 	require.NoError(tb, err)
 	require.Equal(tb, host, parsed.Host, req.Method)
+}
+
+// sendFromNetwork has curl, in a container on the shared network, send req,
+// with body for a PUT, and requires it to succeed.
+func sendFromNetwork(tb testing.TB, req *stds3fx.PresignedRequest, body string) {
+	tb.Helper()
+
+	args := []string{"-fsS", "-o", "/dev/null", "-X", req.Method}
+	for name := range req.Headers {
+		args = append(args, "-H", name+": "+req.Headers.Get(name))
+	}
+
+	if body != "" {
+		args = append(args, "--data-binary", body)
+	}
+
+	// The server's image has curl; any image would do.
+	ctr, err := testcontainers.Run(tb.Context(), s3Image,
+		stdtestcontainer.WithNetwork(tb),
+		testcontainers.WithEntrypoint("curl"),
+		testcontainers.WithCmd(append(args, req.URL)...),
+		testcontainers.WithWaitStrategy(wait.ForExit()),
+	)
+	testcontainers.CleanupContainer(tb, ctr)
+	require.NoError(tb, err)
+
+	state, err := ctr.State(tb.Context())
+	require.NoError(tb, err)
+	require.Equal(tb, 0, state.ExitCode, req.Method)
+}
+
+// Internal signs for the address services reach the server at, which differs
+// from the one clients use, so a service on the shared network can download
+// and upload with the requests; the client's own requests keep the public
+// endpoint.
+func TestInternalSignsForInternalEndpoint(t *testing.T) {
+	t.Parallel()
+
+	_, public := publicEndpoint(t)
+	client := setup(t, map[string]string{"STDS3_PUBLIC_ENDPOINT": public.String()})
+	bucket := mainBucket(t, client)
+
+	internal, err := url.Parse(stdtestcontainer.S3(t, s3Image).NetworkEndpoint)
+	require.NoError(t, err)
+
+	content := "tiny"
+
+	put, err := client.Internal().PresignPut(t.Context(), bucket, "converted", time.Minute,
+		declared("text/plain", len(content)))
+	require.NoError(t, err)
+	requireHost(t, internal.Host, put)
+	sendFromNetwork(t, put, content)
+
+	info, err := client.S3().StatObject(t.Context(), bucket, "converted", minio.StatObjectOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(content)), info.Size)
+
+	get, err := client.Internal().PresignGet(t.Context(), bucket, "converted", time.Minute, nil)
+	require.NoError(t, err)
+	requireHost(t, internal.Host, get)
+	sendFromNetwork(t, get, "")
+
+	get, err = client.PresignGet(t.Context(), bucket, "converted", time.Minute, nil)
+	require.NoError(t, err)
+	requireHost(t, public.Host, get)
 }
