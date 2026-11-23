@@ -13,6 +13,10 @@
 // defaults to STDS3_ENDPOINT, for services the service hands them to, such as
 // a document converter in its own network.
 //
+// The client sends its requests with the transport of stdhttpclientfx when
+// the application provides it, so they pass its logging and middleware, and
+// with minio-go's own otherwise. Pre-signing sends no request.
+//
 // Tests get isolated buckets the way they get isolated databases: with
 // STDS3_CREATE_AND_USE_RANDOM_BUCKETS every configured bucket name gets a
 // random suffix and is created when the fx application starts, and with
@@ -26,6 +30,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"maps"
+	"net/http"
 	"net/url"
 	"slices"
 
@@ -89,6 +94,9 @@ type Params struct {
 
 	Config Config
 	Logs   *zap.Logger
+	// Transport sends the client's requests, such as that of stdhttpclientfx;
+	// without it, minio-go's default does.
+	Transport http.RoundTripper `optional:"true"`
 }
 
 // New builds the client and, in random-bucket mode, ties bucket creation and
@@ -110,7 +118,7 @@ func New(params Params) (*Client, error) {
 
 	creds := newCredentials(cfg)
 
-	objects, err := newS3Client(cfg.Endpoint, cfg.Region, creds)
+	objects, err := newS3Client(cfg.Endpoint, cfg.Region, creds, params.Transport)
 	if err != nil {
 		return nil, errors.Wrap(err, "STDS3_ENDPOINT")
 	}
@@ -118,14 +126,14 @@ func New(params Params) (*Client, error) {
 	// The signer only signs, which needs no request since the region is set.
 	signer := objects
 	if cfg.PublicEndpoint != "" {
-		if signer, err = newS3Client(cfg.PublicEndpoint, cfg.Region, creds); err != nil {
+		if signer, err = newS3Client(cfg.PublicEndpoint, cfg.Region, creds, params.Transport); err != nil {
 			return nil, errors.Wrap(err, "STDS3_PUBLIC_ENDPOINT")
 		}
 	}
 
 	internal := objects
 	if cfg.InternalEndpoint != "" {
-		if internal, err = newS3Client(cfg.InternalEndpoint, cfg.Region, creds); err != nil {
+		if internal, err = newS3Client(cfg.InternalEndpoint, cfg.Region, creds, params.Transport); err != nil {
 			return nil, errors.Wrap(err, "STDS3_INTERNAL_ENDPOINT")
 		}
 	}
@@ -289,7 +297,9 @@ func newCredentials(cfg Config) *credentials.Credentials {
 // newS3Client builds a client for the S3 API at endpoint, a URL whose scheme
 // selects TLS. It addresses buckets by path except on AWS, which it addresses
 // by virtual host.
-func newS3Client(endpoint, region string, creds *credentials.Credentials) (*minio.Client, error) {
+func newS3Client(
+	endpoint, region string, creds *credentials.Credentials, transport http.RoundTripper,
+) (*minio.Client, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse endpoint")
@@ -301,9 +311,10 @@ func newS3Client(endpoint, region string, creds *credentials.Credentials) (*mini
 	}
 
 	client, err := minio.New(parsed.Host, &minio.Options{
-		Creds:  creds,
-		Secure: parsed.Scheme == "https",
-		Region: region,
+		Creds:     creds,
+		Secure:    parsed.Scheme == "https",
+		Region:    region,
+		Transport: transport,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "new s3 client")

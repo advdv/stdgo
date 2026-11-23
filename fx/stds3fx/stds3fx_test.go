@@ -3,9 +3,12 @@ package stds3fx_test
 import (
 	"io"
 	"maps"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/advdv/stdgo/fx/stdhttpclientfx"
 	"github.com/advdv/stdgo/fx/stds3fx"
 	"github.com/advdv/stdgo/fx/stds3fx/stds3testfx"
 	"github.com/advdv/stdgo/fx/stdzapfx"
@@ -214,3 +217,37 @@ func TestConfigurationErrors(t *testing.T) {
 		})
 	}
 }
+
+// With stdhttpclientfx in the app, the client sends its requests through the
+// middleware of that client.
+func TestRequestsPassTheHTTPClientMiddleware(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int64
+
+	var client *stds3fx.Client
+
+	app := fxtest.New(t, testApp(t, nil),
+		stdhttpclientfx.Provide(),
+		fx.Provide(stdhttpclientfx.AsMiddleware(func() stdhttpclientfx.Middleware {
+			return stdhttpclientfx.Middleware{Name: "count", Wrap: func(next http.RoundTripper) http.RoundTripper {
+				return roundTripper(func(req *http.Request) (*http.Response, error) {
+					requests.Add(1)
+
+					return next.RoundTrip(req)
+				})
+			}}
+		})),
+		fx.Populate(&client),
+	)
+	app.RequireStart()
+	t.Cleanup(app.RequireStop)
+
+	before := requests.Load()
+	require.NoError(t, client.Ping(t.Context()))
+	require.Equal(t, before+1, requests.Load())
+}
+
+type roundTripper func(*http.Request) (*http.Response, error)
+
+func (f roundTripper) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
