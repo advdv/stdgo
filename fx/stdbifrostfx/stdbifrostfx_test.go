@@ -124,3 +124,18 @@ func TestFirstTokenIsRejectedOnClientErrorsButNotOnRateLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestFirstTokenSendsImagesAfterThePrompt(t *testing.T) {
+	t.Parallel()
+
+	client, got := setup(t, http.StatusOK, `{"choices":[{"logprobs":{"content":[{"token":"yes","logprob":0}]}}]}`)
+
+	_, err := client.FirstToken(t.Context(), "Is this a certificate?",
+		stdbifrostfx.Image{MediaType: "image/png", Data: []byte("\x89PNG")})
+	require.NoError(t, err)
+	require.Len(t, *got, 1)
+	require.Equal(t, []any{map[string]any{"role": "user", "content": []any{
+		map[string]any{"type": "text", "text": "Is this a certificate?"},
+		map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64,iVBORw=="}},
+	}}}, (*got)[0]["messages"])
+}

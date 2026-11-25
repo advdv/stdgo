@@ -12,6 +12,7 @@ package stdbifrostfx
 
 import (
 	"context"
+	"encoding/base64"
 	"math"
 	"net/http"
 	"strings"
@@ -62,15 +63,27 @@ func (c *Client) Model() string { return c.cfg.Model }
 // most compatible providers allow up to 20.
 const MaxCandidates = 20
 
+// Image is an image a prompt shows the model, such as a PNG, sent inline: a
+// link would have to reach the provider, and would let whoever sees the
+// request fetch the image.
+type Image struct {
+	// MediaType is the image's type, such as "image/png".
+	MediaType string
+	Data      []byte
+}
+
 // FirstToken asks the model prompt for a one-token answer, without reasoning
 // first, and returns the tokens it considered for it with their
 // probabilities. Tokens are trimmed and lower-cased, and the probabilities of
-// tokens that are then the same are added up.
+// tokens that are then the same are added up. Images follow the prompt, in
+// order, for a model that reads images; a prompt can refer to them by
+// position.
 //
-// It fails with [ErrRejected] when the gateway refuses the request, and with
-// [ErrNoLogprobs] when the model answers without log probabilities. Its errors
-// never quote the response body, which may quote the prompt.
-func (c *Client) FirstToken(ctx context.Context, prompt string) (map[string]float64, error) {
+// It fails with [ErrRejected] when the gateway refuses the request, such as
+// with images for a model that reads none, and with [ErrNoLogprobs] when the
+// model answers without log probabilities. Its errors never quote the
+// response body, which may quote the prompt.
+func (c *Client) FirstToken(ctx context.Context, prompt string, images ...Image) (map[string]float64, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 
@@ -81,7 +94,7 @@ func (c *Client) FirstToken(ctx context.Context, prompt string) (map[string]floa
 		Path("/v1/chat/completions").
 		BodyJSON(chatRequest{
 			Model:           c.cfg.Model,
-			Messages:        []message{{Role: "user", Content: prompt}},
+			Messages:        []message{{Role: "user", Content: content(prompt, images)}},
 			MaxTokens:       1,
 			Logprobs:        true,
 			TopLogprobs:     MaxCandidates,
@@ -121,8 +134,40 @@ func (c *Client) FirstToken(ctx context.Context, prompt string) (map[string]floa
 
 // message is a message of a chat completion.
 type message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role string `json:"role"`
+	// Content is the text, or the text and images as parts.
+	Content any `json:"content"`
+}
+
+// part is a part of a message's content: its text, or an image.
+type part struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+// imageURL is an image of a part, as a data URL.
+type imageURL struct {
+	URL string `json:"url"`
+}
+
+// content is a message's content: the prompt as plain text, as every
+// provider takes it, or the prompt and then the images as parts.
+func content(prompt string, images []Image) any {
+	if len(images) == 0 {
+		return prompt
+	}
+
+	parts := make([]part, 0, 1+len(images))
+	parts = append(parts, part{Type: "text", Text: prompt})
+
+	for _, img := range images {
+		parts = append(parts, part{Type: "image_url", ImageURL: &imageURL{
+			URL: "data:" + img.MediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data),
+		}})
+	}
+
+	return parts
 }
 
 // chatRequest is the body of a chat completion request.
